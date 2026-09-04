@@ -1,26 +1,39 @@
 # Changelog
 
-## Unreleased
+All notable changes to this project are documented in this file.
+
+## [Unreleased]
+
+## [0.1.1] - 2026-09-04
+
+### Added
+
+- Dependency-free regression tests for lifecycle cleanup, high-DPI rendering, configuration usage
+  and privacy-sensitive runtime APIs.
+- GitHub Actions verification for JavaScript syntax and regression tests.
+- A concise Simplified Chinese README alongside the primary English documentation.
+
+### Changed
 
 - Preserve each Monaco caret's existing inline styles by hiding it with a scoped CSS class.
-- Wake the suspended render loop for caret size-only changes as well as position changes.
-- Cap the canvas device pixel ratio at a configurable value to bound high-DPI resource use.
-- Fall back cleanly to the native caret when a 2D canvas context is unavailable.
-- Add dependency-free lifecycle, cleanup, configuration and privacy regression tests, plus CI.
+- Wake the suspended render loop when only the caret dimensions change.
+- Cap the canvas device pixel ratio through the configurable `maxDevicePixelRatio` option.
+- Rewrite the primary README and source comments in professional English.
 
-## 0.1.0
+### Fixed
+
+- Keep the native caret available when a 2D canvas context cannot be created.
+
+## [0.1.0] - 2026-08-13
 
 - Neovide-like caret animation drawn on a transparent canvas overlay.
-- Spring-based four-corner deformation; the corner leading the movement catches up faster than the
-  trailing ones.
-- Caret colour follows the VS Code theme (`editorCursor.foreground`), with a configurable fallback.
-- The trail holds briefly after the caret stops moving, then fades out.
-- The render loop suspends while the caret is idle and wakes on key, mouse, scroll and resize
-  events; only a lightweight 100ms scan keeps running.
-- Every `getComputedStyle` read happens in the periodic scan rather than once per frame.
-- Spring integration is sub-stepped, so the animation behaves the same on 60Hz displays and on
-  high-refresh-rate ones.
-- Injecting the script again disposes the previous instance, including before `document.body`
-  exists.
-- Single file, no build step, no npm dependency; every knob lives in the `CONFIG` block at the top
-  of `cursor-trail.js`.
+- Spring-based four-corner deformation with direction-aware trailing behaviour.
+- Caret colour inherited from the VS Code theme, with a configurable fallback.
+- Idle render-loop suspension with keyboard, mouse, scroll and resize wake-ups.
+- Frame-rate-independent spring integration for standard and high-refresh-rate displays.
+- Automatic cleanup when the script is injected again.
+- Single-file distribution with no build step or runtime dependency.
+
+[Unreleased]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/tag/v0.1.0

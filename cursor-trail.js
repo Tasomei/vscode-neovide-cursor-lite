@@ -4,22 +4,20 @@
         opacity: 0.88,
         holdMs: 170,
         fadeMs: 180,
-        // 需要压在编辑器文本之上，但要低于命令面板 / 右键菜单 / hover 浮层，
-        // 否则动画未淡出时拖尾会画到这些浮层上面
+        // Keep the overlay above editor text but below command palettes, context menus and hovers.
+        // Otherwise the trail can remain visible over those surfaces while it fades out.
         zIndex: 100,
         minWidth: 2,
-        // 拖尾绘制宽度的上限，故意小于常见的 editor.cursorWidth。
-        // 移动时光标收窄成细长的一条，是 Neovide smear 效果的一部分，不是缺陷。
-        // 调大它会让拖尾跟随真实光标宽度，看起来更厚重。
+        // Keep the trail narrower than common editor.cursorWidth values. The narrow shape during
+        // movement is part of the Neovide smear effect; increasing this value makes it heavier.
         maxDrawWidth: 4,
-        // 全屏 canvas 的像素数会随设备像素比平方增长。封顶可以避免在少数
-        // 超高 DPI 屏幕上占用过多显存，同时不影响常见的 1x / 1.25x / 1.5x / 2x。
+        // Full-screen canvas memory grows with the square of the device pixel ratio. This cap
+        // limits GPU memory use on very high-DPI displays without affecting ratios up to 2x.
         maxDevicePixelRatio: 2,
         scanIntervalMs: 100,
-        // 被唤醒后至少保持运行这么久，再考虑挂起。
-        // keydown 在 capture 阶段先于 VS Code 更新光标 DOM，如果唤醒的那一帧
-        // 发现"光标没动"就立刻睡下，真正的移动就得等下一次 scan 才被发现，
-        // 表现为按键后动画慢半拍。
+        // Keep the loop active for at least this long after a wake-up. A capture-phase keydown
+        // occurs before VS Code updates the caret DOM; suspending immediately would defer the
+        // resulting movement until the next scan and make the animation appear delayed.
         idleGraceMs: 250,
 
         animationLength: 0.16,
@@ -28,8 +26,8 @@
         shortMoveVerticalThreshold: 0.2,
 
         rankTrailFactors: [1.05, 0.82, 0.36, 0.08],
-        // 让朝着移动方向的那个角收敛得更快，拉开和拖尾角的差距。
-        // 它只是缩短该角的 animationLength，不做瞬间吸附。
+        // Let the corner facing the movement direction converge faster than the trailing corners.
+        // This shortens its animation length without snapping it directly to the destination.
         useLeadingBoost: true,
         leadingBoostFactor: 0.045,
         leadingBoostThreshold: 0.45,
@@ -51,8 +49,8 @@
     let manager = null;
     let startTimer = 0;
 
-    // 立刻占位注册。若等 DOM 就绪后再注册，脚本在 body 出现前被注入第二次时，
-    // 上面的 dispose 检查会读到 undefined，导致两条启动链和两套 rAF 循环并存。
+    // Register a placeholder immediately. Waiting for DOM readiness would allow a second
+    // pre-body injection to create two startup chains and two animation loops.
     window[GLOBAL_KEY] = {
         dispose() {
             clearTimeout(startTimer);
@@ -103,9 +101,8 @@
         return CONFIG.fallbackColor;
     }
 
-    // 接收已经取好的 style，避免调用方重复触发样式重算。
-    // 主题色作为兜底放在 find 之后，只有前面四个候选都不可用时才会去读
-    // documentElement 的样式（写在数组字面量里会被无条件求值）。
+    // Accept a previously read style object to avoid duplicate style recalculation. Read the
+    // document theme only when all direct colour candidates are unusable.
     function getCursorColor(style) {
         const candidates = [
             style.backgroundColor,
@@ -137,11 +134,9 @@
                 return false;
             }
 
-            // dt 接近或超过 animationLength 时单步积分会发散。早期版本在这种情况下
-            // 直接把弹簧归零，结果是 60Hz(dt≈0.0167) 瞬间吸附、高刷新率(dt≈0.0069)
-            // 走完整弹簧，同一份配置在不同屏幕上手感不同。
-            // 这里改成把一帧拆成若干子步积分：高刷新率下 steps 恒为 1，行为不变；
-            // 低帧率下拆开推进，收敛曲线向高刷新率看齐，而不是被截断成硬吸附。
+            // A single integration step becomes unstable when dt approaches animationLength.
+            // Subdivide longer frames so 60 Hz and high-refresh-rate displays follow comparable
+            // spring curves instead of snapping or diverging.
             const maxStep = this.animationLength * 0.5;
             const steps = Math.min(Math.max(1, Math.ceil(dt / maxStep)), 8);
             const stepDt = dt / steps;
@@ -219,8 +214,8 @@
 
             let factor = CONFIG.rankTrailFactors[rank] || 1;
 
-            // 领先角用更短的 animationLength 收敛得更快，但依然走完整的弹簧积分，
-            // 不做瞬间吸附——跨刷新率的一致性交给 DampedSpring 的子步进保证。
+            // The leading corner uses a shorter animation length but still follows the complete
+            // spring integration. DampedSpring substeps keep the result consistent across rates.
             if (CONFIG.useLeadingBoost && leadingAlignment > CONFIG.leadingBoostThreshold) {
                 factor = CONFIG.leadingBoostFactor;
             }
@@ -299,8 +294,8 @@
                 jumped = true;
             },
 
-            // rAF 空闲时会被挂起，恢复时必须重置时间基准，
-            // 否则第一帧的 dt 会把整段空闲时间算进去。
+            // Reset the clock after an idle suspension so the first resumed frame does not include
+            // the entire idle period in its delta time.
             resetClock() {
                 lastTime = performance.now();
             },
@@ -394,8 +389,8 @@
         }
 
         start() {
-            // 极少数环境可能因为画布尺寸、显卡状态或策略限制拿不到 2D context。
-            // 这种情况下不注入任何样式或监听器，保留原生光标正常工作。
+            // If the environment cannot provide a 2D context, leave the native caret untouched
+            // and avoid installing styles or listeners.
             if (!this.context) return false;
 
             this.style.textContent = `
@@ -426,8 +421,8 @@
                 passive: true
             });
 
-            // 光标移动只可能由用户操作引发，用这两个事件把挂起的 rAF 立刻唤醒，
-            // 这样首帧没有轮询延迟。scan 里的位置比对负责兜底非用户触发的移动。
+            // Wake the suspended animation loop immediately after direct user input. Periodic
+            // geometry comparison remains the fallback for movement caused by other sources.
             document.addEventListener("keydown", this.onUserInput, {
                 capture: true,
                 passive: true
@@ -443,8 +438,8 @@
             return true;
         }
 
-        // 循环在空闲时会停下，这里负责重新拉起。
-        // 无论循环是否已在运行都要续上活跃窗口，连续输入时窗口才能不断顺延。
+        // Wake the loop after an idle suspension and extend its active window on every input,
+        // including when a frame is already scheduled.
         requestFrame() {
             this.keepAliveUntil = performance.now() + CONFIG.idleGraceMs;
 
@@ -483,8 +478,8 @@
             this.requestFrame();
         }
 
-        // 每帧只读几何信息。getBoundingClientRect 会触发布局，但不像 getComputedStyle
-        // 那样强制整棵样式树重算，样式相关的判断都挪到 readCursorStyle 里按 scan 频率做。
+        // Read only geometry on each frame. Style-dependent checks run at scan frequency in
+        // readCursorStyle to avoid forcing a complete style recalculation every frame.
         readCursorRect(cursor) {
             const rect = cursor.getBoundingClientRect();
             if (rect.width <= 0 || rect.height <= 0) return null;
@@ -497,15 +492,15 @@
             };
         }
 
-        // 唯一读取 getComputedStyle 的地方，每 scanIntervalMs 调用一次。
+        // This is the only per-caret getComputedStyle read and runs once per scan interval.
         readCursorStyle(cursor) {
             const style = getComputedStyle(cursor);
 
             return {
                 color: getCursorColor(style),
-                // VS Code 把闲置光标 transform 到视口外来隐藏，这里靠字符串识别。
-                // 属于对上游实现细节的依赖：若哪天改了写法，最坏结果是多画一个
-                // 本该隐藏的光标，不会抛错，届时调整这里即可。
+                // VS Code hides inactive carets by transforming them outside the viewport. This
+                // string check depends on that implementation detail; failure only draws an extra
+                // caret and does not interrupt the script.
                 styleVisible:
                     style.display !== "none" &&
                     style.visibility !== "hidden" &&
@@ -534,8 +529,8 @@
                 const existing = this.cursors.get(cursor);
 
                 if (existing) {
-                    // 光标从隐藏恢复可见时，位置往往没变，下面那轮位置比对察觉不到，
-                    // 而循环可能已经挂起，所以在这里显式唤醒。
+                    // A caret can become visible without moving. Wake the loop explicitly because
+                    // the geometry comparison below would not detect that transition.
                     if (!existing.styleVisible && styleState.styleVisible) {
                         shouldWake = true;
                     }
@@ -568,9 +563,8 @@
                     return;
                 }
 
-                // 兜底：rAF 挂起期间若光标被非用户操作移动（扩展、格式化等），
-                // 键鼠事件不会触发，靠这里的位置比对唤醒。
-                // 循环已经运行时会逐帧检查，无需在 scan 里重复读取布局。
+                // While rAF is suspended, geometry comparison detects movement caused by
+                // extensions or formatting. Avoid the duplicate layout read while rAF is active.
                 if (this.animationFrame) return;
 
                 const rect = this.readCursorRect(cursor);
@@ -674,8 +668,8 @@
                 });
             }
 
-            // 空闲时挂起循环。停下后画布保留最后一帧内容，但 opacity 已是 0，
-            // 下次唤醒的第一件事就是 clearRect，所以不会有残影。
+            // Suspend the loop while idle. The last canvas frame is transparent and is cleared
+            // before the next visible frame, so it cannot reappear as a stale trail.
             if (
                 anyAnimating ||
                 this.canvasVisible ||

@@ -11,24 +11,24 @@ permissions:
 
 jobs:
   verify:
-    name: 语法与回归检查
+    name: Syntax and regression checks
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
-      - name: 检出仓库
+      - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
-      - name: 配置 Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
           package-manager-cache: false
 
-      - name: 检查 JavaScript 语法
+      - name: Check JavaScript syntax
         run: node --check cursor-trail.js
 
-      - name: 运行回归测试
+      - name: Run regression tests
         run: node --test

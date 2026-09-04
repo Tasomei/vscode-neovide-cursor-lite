@@ -249,7 +249,7 @@ function createHarness(options = {}) {
             runFrame();
             count += 1;
         }
-        assert.ok(count < limit, "动画循环应在空闲后挂起");
+        assert.ok(count < limit, "the animation loop should suspend after becoming idle");
     }
 
     return {
@@ -280,7 +280,7 @@ function createHarness(options = {}) {
     };
 }
 
-test("启动时限制设备像素比，并且不改写光标原有内联样式", () => {
+test("caps the device pixel ratio without overwriting existing inline caret styles", () => {
     const harness = createHarness({ devicePixelRatio: 3 });
     const originalOpacity = harness.cursor.style.opacity;
     const originalTransition = harness.cursor.style.transition;
@@ -319,7 +319,7 @@ test("启动时限制设备像素比，并且不改写光标原有内联样式",
     assert.equal(harness.pendingAnimationFrames, 0);
 });
 
-test("重复注入时会先完整清理上一实例", () => {
+test("cleans up the previous instance before reinjection", () => {
     const harness = createHarness();
 
     harness.inject();
@@ -344,7 +344,7 @@ test("重复注入时会先完整清理上一实例", () => {
     harness.window[GLOBAL_KEY].dispose();
 });
 
-test("光标只有尺寸变化时也会唤醒挂起的动画循环", () => {
+test("wakes the suspended loop when only the caret dimensions change", () => {
     const harness = createHarness();
 
     harness.inject();
@@ -358,7 +358,7 @@ test("光标只有尺寸变化时也会唤醒挂起的动画循环", () => {
     harness.window[GLOBAL_KEY].dispose();
 });
 
-test("拿不到 2D context 时保持原生光标并安全退出", () => {
+test("preserves the native caret when a 2D context is unavailable", () => {
     const harness = createHarness({ contextAvailable: false });
 
     assert.doesNotThrow(() => harness.inject());
@@ -373,9 +373,9 @@ test("拿不到 2D context 时保持原生光标并安全退出", () => {
     assert.equal(harness.window[GLOBAL_KEY], undefined);
 });
 
-test("每个公开配置项都在运行时代码中使用", () => {
+test("uses every public configuration option in the runtime", () => {
     const configBlock = SOURCE.match(/const CONFIG = \{([\s\S]*?)\n    \};/);
-    assert.ok(configBlock, "应能找到 CONFIG 配置块");
+    assert.ok(configBlock, "the CONFIG block should be present");
 
     const definedKeys = [...configBlock[1].matchAll(/^\s{8}([A-Za-z][A-Za-z0-9]*):/gm)]
         .map((match) => match[1])
@@ -388,7 +388,7 @@ test("每个公开配置项都在运行时代码中使用", () => {
     assert.deepEqual(referencedKeys, definedKeys);
 });
 
-test("运行时代码不包含网络、存储或动态执行入口", () => {
+test("contains no network, storage or dynamic-execution entry points", () => {
     const forbiddenPatterns = [
         /\bfetch\s*\(/,
         /\bXMLHttpRequest\b/,
