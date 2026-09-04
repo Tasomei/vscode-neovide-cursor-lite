@@ -58,13 +58,17 @@ rg -n -i "fetch|XMLHttpRequest|WebSocket|eval\\s*\\(|new\\s+Function|require\\s*
 
 这个项目的脚本不应该命中这些内容。
 
-最后做语法检查：
+最后做语法检查和内置回归测试：
 
 ```powershell
 node --check cursor-trail.js
 ```
 
-没有输出就是好消息。命令行有时候很冷淡，但冷淡也可以是稳定。
+```powershell
+node --test
+```
+
+语法检查没有输出就是好消息；回归测试应显示所有测试通过。命令行有时候很冷淡，但冷淡也可以是稳定。
 
 ## 3. 提交本地仓库
 

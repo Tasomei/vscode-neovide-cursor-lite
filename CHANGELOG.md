@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Preserve each Monaco caret's existing inline styles by hiding it with a scoped CSS class.
+- Wake the suspended render loop for caret size-only changes as well as position changes.
+- Cap the canvas device pixel ratio at a configurable value to bound high-DPI resource use.
+- Fall back cleanly to the native caret when a 2D canvas context is unavailable.
+- Add dependency-free lifecycle, cleanup, configuration and privacy regression tests, plus CI.
+
 ## 0.1.0
 
 - Neovide-like caret animation drawn on a transparent canvas overlay.

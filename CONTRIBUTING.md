@@ -19,13 +19,19 @@ Before opening a pull request:
    node --check cursor-trail.js
    ```
 
-2. Test in VS Code after running:
+2. Run the dependency-free regression tests:
+
+   ```bash
+   node --test
+   ```
+
+3. Test in VS Code after running:
 
    ```txt
    Reload Custom CSS and JS
    ```
 
-3. Keep changes focused. Avoid unrelated formatting churn.
+4. Keep changes focused. Avoid unrelated formatting churn.
 
 ## Style
 

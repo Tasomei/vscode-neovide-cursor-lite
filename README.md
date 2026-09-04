@@ -291,6 +291,7 @@ fadeMs: 180,
 animationLength: 0.16,
 shortAnimationLength: 0.065,
 rankTrailFactors: [1.05, 0.82, 0.36, 0.08],
+maxDevicePixelRatio: 2,
 ```
 
 想更轻快：
@@ -324,6 +325,8 @@ maxDrawWidth: 3,
 ```
 
 `maxDrawWidth` 是拖尾的宽度上限，默认 `4`，通常比 `editor.cursorWidth` 小。移动时光标收窄成细长的一条，这是 smear 效果的一部分。调大它拖尾会跟随真实光标宽度，看起来更厚重。
+
+`maxDevicePixelRatio` 是全屏画布的设备像素比上限，默认 `2`。常见的 1x、1.25x、1.5x、2x 屏幕不会受影响；更高 DPI 会按 2x 绘制，避免画布像素数和显存占用继续平方增长。如果更看重资源占用，可以设成 `1`，代价是高分屏上的边缘会稍微软一点。
 
 每次改完脚本后，都要执行：
 

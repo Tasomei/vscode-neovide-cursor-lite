@@ -12,6 +12,9 @@
         // 移动时光标收窄成细长的一条，是 Neovide smear 效果的一部分，不是缺陷。
         // 调大它会让拖尾跟随真实光标宽度，看起来更厚重。
         maxDrawWidth: 4,
+        // 全屏 canvas 的像素数会随设备像素比平方增长。封顶可以避免在少数
+        // 超高 DPI 屏幕上占用过多显存，同时不影响常见的 1x / 1.25x / 1.5x / 2x。
+        maxDevicePixelRatio: 2,
         scanIntervalMs: 100,
         // 被唤醒后至少保持运行这么久，再考虑挂起。
         // keydown 在 capture 阶段先于 VS Code 更新光标 DOM，如果唤醒的那一帧
@@ -39,6 +42,7 @@
     };
 
     const GLOBAL_KEY = "__vscodeNeovideCursorLite";
+    const HIDDEN_CLASS = "vscode-neovide-cursor-lite-hidden";
 
     if (window[GLOBAL_KEY] && window[GLOBAL_KEY].dispose) {
         window[GLOBAL_KEY].dispose();
@@ -68,6 +72,17 @@
     function normalize(vector) {
         const length = Math.hypot(vector.x, vector.y);
         return length ? { x: vector.x / length, y: vector.y / length } : { x: 0, y: 0 };
+    }
+
+    function rectChanged(previous, next) {
+        if (!previous || !next) return previous !== next;
+
+        return (
+            Math.round(next.left) !== Math.round(previous.left) ||
+            Math.round(next.top) !== Math.round(previous.top) ||
+            Math.round(next.width) !== Math.round(previous.width) ||
+            Math.round(next.height) !== Math.round(previous.height)
+        );
     }
 
     function isUsableColor(value) {
@@ -379,9 +394,17 @@
         }
 
         start() {
+            // 极少数环境可能因为画布尺寸、显卡状态或策略限制拿不到 2D context。
+            // 这种情况下不注入任何样式或监听器，保留原生光标正常工作。
+            if (!this.context) return false;
+
             this.style.textContent = `
                 .monaco-editor .cursors-layer .cursor {
                     transition: none !important;
+                }
+
+                .monaco-editor .cursors-layer .cursor.${HIDDEN_CLASS} {
+                    opacity: 0 !important;
                 }
             `;
             document.head.appendChild(this.style);
@@ -417,6 +440,7 @@
             this.scan();
             this.scanTimer = window.setInterval(() => this.scan(), CONFIG.scanIntervalMs);
             this.requestFrame();
+            return true;
         }
 
         // 循环在空闲时会停下，这里负责重新拉起。
@@ -431,7 +455,8 @@
         }
 
         resize() {
-            this.devicePixelRatio = window.devicePixelRatio || 1;
+            const maxRatio = Math.max(1, Number(CONFIG.maxDevicePixelRatio) || 1);
+            this.devicePixelRatio = clamp(window.devicePixelRatio || 1, 1, maxRatio);
             this.viewportWidth = window.innerWidth;
             this.viewportHeight = window.innerHeight;
             this.canvas.width = Math.ceil(this.viewportWidth * this.devicePixelRatio);
@@ -538,21 +563,18 @@
 
             this.cursors.forEach((data, cursor) => {
                 if (!liveElements.has(cursor) || !cursor.isConnected) {
-                    cursor.style.opacity = "";
-                    cursor.style.transition = "";
+                    cursor.classList.remove(HIDDEN_CLASS);
                     this.cursors.delete(cursor);
                     return;
                 }
 
                 // 兜底：rAF 挂起期间若光标被非用户操作移动（扩展、格式化等），
                 // 键鼠事件不会触发，靠这里的位置比对唤醒。
+                // 循环已经运行时会逐帧检查，无需在 scan 里重复读取布局。
+                if (this.animationFrame) return;
+
                 const rect = this.readCursorRect(cursor);
-                if (
-                    rect &&
-                    data.lastRect &&
-                    (Math.round(rect.left) !== Math.round(data.lastRect.left) ||
-                        Math.round(rect.top) !== Math.round(data.lastRect.top))
-                ) {
+                if (rectChanged(data.lastRect, rect)) {
                     shouldWake = true;
                 }
             });
@@ -596,6 +618,7 @@
 
             this.cursors.forEach((data, cursor) => {
                 if (!cursor.isConnected) {
+                    cursor.classList.remove(HIDDEN_CLASS);
                     this.cursors.delete(cursor);
                     return;
                 }
@@ -605,15 +628,11 @@
 
                 if (!visible) {
                     data.active = false;
+                    cursor.classList.remove(HIDDEN_CLASS);
                     return;
                 }
 
-                const moved =
-                    !data.lastRect ||
-                    Math.round(rect.left) !== Math.round(data.lastRect.left) ||
-                    Math.round(rect.top) !== Math.round(data.lastRect.top) ||
-                    Math.round(rect.width) !== Math.round(data.lastRect.width) ||
-                    Math.round(rect.height) !== Math.round(data.lastRect.height);
+                const moved = rectChanged(data.lastRect, rect);
 
                 if (!data.active) {
                     data.instance.move(rect, data.color, this.lastGlobalCenter);
@@ -639,8 +658,7 @@
                 this.setCanvasVisible(true);
                 this.cursors.forEach((data, cursor) => {
                     if (data.active) {
-                        cursor.style.transition = "opacity 0s linear";
-                        cursor.style.opacity = "0";
+                        cursor.classList.add(HIDDEN_CLASS);
                     }
                 });
             } else {
@@ -651,11 +669,8 @@
                     this.setCanvasVisible(false);
                 }
 
-                this.cursors.forEach((data, cursor) => {
-                    if (data.active) {
-                        cursor.style.transition = "";
-                        cursor.style.opacity = "";
-                    }
+                this.cursors.forEach((_, cursor) => {
+                    cursor.classList.remove(HIDDEN_CLASS);
                 });
             }
 
@@ -685,8 +700,7 @@
             document.removeEventListener("mousedown", this.onUserInput, { capture: true });
 
             this.cursors.forEach((_, cursor) => {
-                cursor.style.opacity = "";
-                cursor.style.transition = "";
+                cursor.classList.remove(HIDDEN_CLASS);
             });
 
             this.cursors.clear();
@@ -702,8 +716,8 @@
         }
 
         startTimer = 0;
-        manager = new CursorManager();
-        manager.start();
+        const nextManager = new CursorManager();
+        manager = nextManager.start() ? nextManager : null;
     }
 
     startWhenReady();
