@@ -1,0 +1,105 @@
+name: Bug report
+description: Report a reproducible problem with the cursor animation.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Remove private file paths, credentials and unrelated logs before submitting.
+  - type: input
+    id: vscode-version
+    attributes:
+      label: VS Code version
+      placeholder: "For example: 1.105.0"
+    validations:
+      required: true
+  - type: input
+    id: operating-system
+    attributes:
+      label: Operating system
+      placeholder: "For example: Windows 11 24H2"
+    validations:
+      required: true
+  - type: input
+    id: loader-version
+    attributes:
+      label: Custom CSS and JS Loader version
+      placeholder: "For example: 7.4.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: cursor-style
+    attributes:
+      label: Cursor style
+      options:
+        - line
+        - block
+        - underline
+        - line-thin
+        - block-outline
+        - underline-thin
+        - unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: vscodevim
+    attributes:
+      label: Are you using VSCodeVim?
+      options:
+        - "No"
+        - "Yes"
+    validations:
+      required: true
+  - type: dropdown
+    id: editor-context
+    attributes:
+      label: Where does the problem occur?
+      multiple: true
+      options:
+        - Standard editor
+        - Split editor
+        - Diff editor
+        - Multiple cursors
+        - Find or replace widget
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the shortest sequence that reliably reproduces the problem.
+      placeholder: |
+        1. Open ...
+        2. Move the cursor ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Optional evidence
+      description: Add a short screen recording, screenshot or sanitised console error if it helps.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I tested the latest release.
+          required: true
+        - label: I removed private paths, credentials and unrelated logs.
+          required: true

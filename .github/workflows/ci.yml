@@ -32,3 +32,6 @@ jobs:
 
       - name: Run regression tests
         run: node --test
+
+      - name: Build release assets
+        run: node scripts/prepare-release.js

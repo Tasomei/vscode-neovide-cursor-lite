@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-04
+
+### Added
+
+- A repository social-preview image.
+- Direct release-asset packaging for `cursor-trail.js` with a SHA-256 checksum.
+- Automated verification that release assets match the reviewed runtime source.
+- Structured bug-report and feature-request forms.
+
+### Changed
+
+- Make direct release-asset download the primary installation path in both READMEs.
+- Document verified, expected and unsupported environments without overstating compatibility.
+- Build release assets as part of continuous integration.
+
+The runtime animation and its default feel are unchanged in this release.
+
 ## [0.1.1] - 2026-09-04
 
 ### Added
@@ -34,6 +51,7 @@ All notable changes to this project are documented in this file.
 - Automatic cleanup when the script is injected again.
 - Single-file distribution with no build step or runtime dependency.
 
-[Unreleased]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/tag/v0.1.0

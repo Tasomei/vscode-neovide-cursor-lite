@@ -1,0 +1,47 @@
+name: Feature request
+description: Propose a focused improvement to the cursor animation or installation experience.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This project prioritises cursor animation quality, low overhead and a small auditable runtime.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What limitation or user need should this feature address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behaviour rather than only the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include any existing setting, workaround or related project you evaluated.
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Area
+      options:
+        - Cursor behaviour
+        - Performance
+        - Compatibility
+        - Installation
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Performance or compatibility considerations
+      description: Explain any expected cost, especially additional per-frame work or VS Code DOM dependencies.
