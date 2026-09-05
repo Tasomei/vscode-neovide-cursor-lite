@@ -19,6 +19,9 @@
         // occurs before VS Code updates the caret DOM; suspending immediately would defer the
         // resulting movement until the next scan and make the animation appear delayed.
         idleGraceMs: 250,
+        // 尊重系统的减少动态效果偏好，并在窗口失焦时暂停。
+        respectReducedMotion: true,
+        pauseWhenWindowBlurred: true,
 
         animationLength: 0.16,
         shortAnimationLength: 0.065,
@@ -79,7 +82,8 @@
             Math.round(next.left) !== Math.round(previous.left) ||
             Math.round(next.top) !== Math.round(previous.top) ||
             Math.round(next.width) !== Math.round(previous.width) ||
-            Math.round(next.height) !== Math.round(previous.height)
+            Math.round(next.height) !== Math.round(previous.height) ||
+            next.shape !== previous.shape
         );
     }
 
@@ -88,7 +92,9 @@
         const color = value.trim();
         if (!color || color === "transparent") return false;
         if (/rgba?\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)/i.test(color)) return false;
-        if (/rgba?\([^)]*,\s*0\s*\)$/i.test(color)) return false;
+        // RGB 的最后一个分量是蓝色，只有明确的 alpha 为零才表示透明。
+        if (/^rgba\([^,]+,[^,]+,[^,]+,\s*0(?:\.0+)?\s*\)$/i.test(color)) return false;
+        if (/^(?:rgb|hsl)a?\([^)]*\/\s*0(?:\.0+)?%?\s*\)$/i.test(color)) return false;
         return true;
     }
 
@@ -106,6 +112,7 @@
     function getCursorColor(style) {
         const candidates = [
             style.backgroundColor,
+            style.borderBottomColor,
             style.borderLeftColor,
             style.borderColor,
             style.color
@@ -267,24 +274,28 @@
         let color = CONFIG.fallbackColor;
         let initialized = false;
         let jumped = false;
+        let outline = false;
         let lastTime = performance.now();
 
         return {
-            move(rect, nextColor, sourceCenter) {
+            move(rect, nextColor, immediate = false) {
                 const nextDimensions = {
-                    width: clamp(rect.width, CONFIG.minWidth, CONFIG.maxDrawWidth),
+                    width: rect.shape === "line"
+                        ? clamp(rect.width, CONFIG.minWidth, CONFIG.maxDrawWidth)
+                        : rect.width,
                     height: rect.height
                 };
                 const nextCenter = {
                     x: rect.left + nextDimensions.width / 2,
                     y: rect.top + nextDimensions.height / 2
                 };
-                const startCenter = initialized ? center : sourceCenter || nextCenter;
+                const startCenter = initialized && !immediate ? center : nextCenter;
 
                 dimensions = nextDimensions;
                 color = nextColor || color;
+                outline = rect.shape === "block-outline";
 
-                if (!initialized) {
+                if (!initialized || immediate) {
                     corners.forEach((corner) => corner.setAt(startCenter, dimensions));
                     initialized = true;
                 }
@@ -340,6 +351,8 @@
                 context.save();
                 context.globalAlpha = CONFIG.opacity;
                 context.fillStyle = color;
+                context.strokeStyle = color;
+                context.lineWidth = 1;
 
                 if (CONFIG.useShadow) {
                     context.shadowColor = color;
@@ -353,7 +366,11 @@
                     context.lineTo(corners[index].current.x, corners[index].current.y);
                 }
                 context.closePath();
-                context.fill();
+                if (outline) {
+                    context.stroke();
+                } else {
+                    context.fill();
+                }
                 context.restore();
 
                 return animating;
@@ -364,7 +381,12 @@
     class CursorManager {
         constructor() {
             this.cursors = new Map();
-            this.lastGlobalCenter = null;
+            this.paused = true;
+            this.disposed = false;
+            this.windowFocused = document.hasFocus();
+            this.reducedMotion = typeof window.matchMedia === "function"
+                ? window.matchMedia("(prefers-reduced-motion: reduce)")
+                : null;
             this.isScrolling = false;
             this.lastAnimationAt = 0;
             this.fadeTimer = 0;
@@ -385,6 +407,15 @@
             this.onResize = this.resize.bind(this);
             this.onScroll = this.markScrolling.bind(this);
             this.onUserInput = this.requestFrame.bind(this);
+            this.onActivityChange = this.updateActivity.bind(this);
+            this.onFocus = () => {
+                this.windowFocused = true;
+                this.updateActivity();
+            };
+            this.onBlur = () => {
+                this.windowFocused = false;
+                this.updateActivity();
+            };
             this.loop = this.loop.bind(this);
         }
 
@@ -416,6 +447,10 @@
 
             this.resize();
             window.addEventListener("resize", this.onResize);
+            window.addEventListener("focus", this.onFocus);
+            window.addEventListener("blur", this.onBlur);
+            document.addEventListener("visibilitychange", this.onActivityChange);
+            this.reducedMotion?.addEventListener("change", this.onActivityChange);
             document.addEventListener("scroll", this.onScroll, {
                 capture: true,
                 passive: true
@@ -432,15 +467,50 @@
                 passive: true
             });
 
-            this.scan();
-            this.scanTimer = window.setInterval(() => this.scan(), CONFIG.scanIntervalMs);
-            this.requestFrame();
+            this.updateActivity();
             return true;
+        }
+
+        updateActivity() {
+            if (this.disposed) return;
+            const paused = document.hidden ||
+                (CONFIG.pauseWhenWindowBlurred && !this.windowFocused) ||
+                (CONFIG.respectReducedMotion && this.reducedMotion?.matches);
+            this.style.disabled = Boolean(paused);
+            if (Boolean(paused) === this.paused) return;
+            this.paused = Boolean(paused);
+            if (this.paused) {
+                cancelAnimationFrame(this.animationFrame);
+                clearInterval(this.scanTimer);
+                clearTimeout(this.scrollTimer);
+                clearTimeout(this.fadeTimer);
+                this.animationFrame = 0;
+                this.scanTimer = 0;
+                this.scrollTimer = 0;
+                this.fadeTimer = 0;
+                this.keepAliveUntil = 0;
+                this.lastAnimationAt = 0;
+                this.isScrolling = false;
+                this.fadePending = false;
+                this.canvasVisible = false;
+                this.canvas.style.transition = "none";
+                this.canvas.style.opacity = "0";
+                this.context.clearRect(0, 0, this.viewportWidth, this.viewportHeight);
+                this.cursors.forEach((_, cursor) => cursor.classList.remove(HIDDEN_CLASS));
+                // 丢弃旧坐标，恢复时从各光标的新位置开始，不补播后台移动。
+                this.cursors.clear();
+            } else {
+                this.resize();
+                this.scan();
+                this.scanTimer = window.setInterval(() => this.scan(), CONFIG.scanIntervalMs);
+                this.requestFrame();
+            }
         }
 
         // Wake the loop after an idle suspension and extend its active window on every input,
         // including when a frame is already scheduled.
         requestFrame() {
+            if (this.paused || this.disposed) return;
             this.keepAliveUntil = performance.now() + CONFIG.idleGraceMs;
 
             if (this.animationFrame) return;
@@ -470,6 +540,7 @@
         }
 
         markScrolling() {
+            if (this.paused || this.disposed) return;
             this.isScrolling = true;
             clearTimeout(this.scrollTimer);
             this.scrollTimer = setTimeout(() => {
@@ -484,11 +555,19 @@
             const rect = cursor.getBoundingClientRect();
             if (rect.width <= 0 || rect.height <= 0) return null;
 
+            // 读取 Monaco 的形状类，不根据宽高猜测，也不读取光标下的字符。
+            const classes = cursor.closest(".cursors-layer")?.classList;
+            const shape = ["block-outline", "block", "underline-thin", "underline", "line-thin"]
+                .find((name) => classes?.contains(`cursor-${name}-style`)) || "line";
+            const height = shape === "underline-thin" ? Math.min(rect.height, 1) : rect.height;
+            const inset = shape === "block-outline" ? Math.min(0.5, rect.width / 2, height / 2) : 0;
+
             return {
-                left: rect.left,
-                top: rect.top,
-                width: Math.max(rect.width, CONFIG.minWidth),
-                height: rect.height
+                left: rect.left + inset,
+                top: rect.top + rect.height - height + inset,
+                width: rect.width - inset * 2,
+                height: height - inset * 2,
+                shape
             };
         }
 
@@ -518,6 +597,7 @@
         }
 
         scan() {
+            if (this.paused || this.disposed) return;
             const liveElements = new Set();
             const elements = document.querySelectorAll(".monaco-editor .cursors-layer .cursor");
             let shouldWake = false;
@@ -531,7 +611,9 @@
                 if (existing) {
                     // A caret can become visible without moving. Wake the loop explicitly because
                     // the geometry comparison below would not detect that transition.
-                    if (!existing.styleVisible && styleState.styleVisible) {
+                    if (existing.styleVisible !== styleState.styleVisible ||
+                        existing.color !== styleState.color) {
+                        existing.styleDirty = true;
                         shouldWake = true;
                     }
 
@@ -544,13 +626,15 @@
                 if (!rect) return;
 
                 const instance = createAnimatedCursor();
-                instance.move(rect, styleState.color, this.lastGlobalCenter);
+                instance.move(rect, styleState.color);
 
                 this.cursors.set(cursor, {
                     instance,
                     lastRect: rect,
                     color: styleState.color,
                     styleVisible: styleState.styleVisible,
+                    editor: cursor.closest(".monaco-editor"),
+                    styleDirty: false,
                     active: false
                 });
                 shouldWake = true;
@@ -560,6 +644,7 @@
                 if (!liveElements.has(cursor) || !cursor.isConnected) {
                     cursor.classList.remove(HIDDEN_CLASS);
                     this.cursors.delete(cursor);
+                    shouldWake = true;
                     return;
                 }
 
@@ -598,6 +683,10 @@
         }
 
         loop() {
+            if (this.paused || this.disposed) {
+                this.animationFrame = 0;
+                return;
+            }
             this.context.setTransform(
                 this.devicePixelRatio,
                 0,
@@ -627,20 +716,20 @@
                 }
 
                 const moved = rectChanged(data.lastRect, rect);
+                const editor = cursor.closest(".monaco-editor");
+                const reset = !data.active || data.editor !== editor ||
+                    data.lastRect?.shape !== rect.shape;
 
-                if (!data.active) {
-                    data.instance.move(rect, data.color, this.lastGlobalCenter);
+                if (reset) {
+                    data.instance.move(rect, data.color, true);
                     data.active = true;
-                } else if (moved) {
+                } else if (moved || data.styleDirty) {
                     data.instance.move(rect, data.color);
                 }
 
                 data.lastRect = rect;
-
-                this.lastGlobalCenter = {
-                    x: rect.left + rect.width / 2,
-                    y: rect.top + rect.height / 2
-                };
+                data.editor = editor;
+                data.styleDirty = false;
 
                 if (data.instance.draw(this.context, this.isScrolling)) {
                     anyAnimating = true;
@@ -683,12 +772,17 @@
         }
 
         dispose() {
+            this.disposed = true;
             cancelAnimationFrame(this.animationFrame);
             this.animationFrame = 0;
             clearInterval(this.scanTimer);
             clearTimeout(this.scrollTimer);
             clearTimeout(this.fadeTimer);
             window.removeEventListener("resize", this.onResize);
+            window.removeEventListener("focus", this.onFocus);
+            window.removeEventListener("blur", this.onBlur);
+            document.removeEventListener("visibilitychange", this.onActivityChange);
+            this.reducedMotion?.removeEventListener("change", this.onActivityChange);
             document.removeEventListener("scroll", this.onScroll, { capture: true });
             document.removeEventListener("keydown", this.onUserInput, { capture: true });
             document.removeEventListener("mousedown", this.onUserInput, { capture: true });

@@ -10,6 +10,9 @@ A performance-first, auditable Neovide-style cursor animation for Visual Studio 
 - No network requests, telemetry or persistent storage
 - Suspends its animation loop while idle
 
+The working tree is preparing **0.2.0**; the latest-release link below still serves the published
+version until 0.2.0 is released.
+
 [Download `cursor-trail.js`](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/latest/download/cursor-trail.js)
 · [All releases](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases)
 
@@ -73,14 +76,24 @@ Runtime options are defined in the `CONFIG` object at the top of
 | `fadeMs` | `180` | Fade-out duration |
 | `animationLength` | `0.16` | Spring duration for longer movements |
 | `shortAnimationLength` | `0.065` | Spring duration for short movements |
-| `maxDrawWidth` | `4` | Maximum animated cursor width |
+| `maxDrawWidth` | `4` | Maximum regular line-cursor trail width |
 | `maxDevicePixelRatio` | `2` | Canvas pixel-ratio cap |
 | `idleGraceMs` | `250` | Minimum active time after input |
+| `respectReducedMotion` | `true` | Use the native caret when the system requests reduced motion |
+| `pauseWhenWindowBlurred` | `true` | Suspend rendering and scanning while the window is unfocused |
 | `useShadow` | `false` | Optional glow effect |
 | `zIndex` | `100` | Overlay stacking level |
 | `fallbackColor` | `#ca9ee6` | Colour used when the theme colour is unavailable |
 
 Run `Reload Custom CSS and JS` after editing the configuration.
+
+The animation follows `editor.cursorStyle`: `line`, `line-thin`, `block`, `block-outline`,
+`underline` and `underline-thin`. Regular line cursors retain the existing narrow trail;
+other styles use their native geometry. Shape changes are detected from Monaco's rendered caret,
+including changes requested by Vim extensions; no separate Vim settings are required.
+
+Hidden windows always suspend rendering and scanning. Reduced-motion or focus changes take effect
+without reloading. Resuming starts at the current caret position without replaying background moves.
 
 ## Compatibility
 
@@ -94,12 +107,15 @@ Run `Reload Custom CSS and JS` after editing the configuration.
 The project uses an unofficial workbench-injection mechanism. A VS Code update can require the
 script to be enabled again and may change internal DOM details used by the animation.
 
+0.2.0 has automated geometry and lifecycle regression coverage. VS Code and VSCodeVim manual
+acceptance is still pending; these tests do not establish compatibility with every extension.
+
 ## Privacy
 
 The script reads caret geometry, visibility and colour only to render the animation. It does not
 make network requests, access cookies or storage, read the clipboard, execute system commands or
-persist input data. Keyboard, mouse, scroll and resize listeners only wake the suspended render
-loop; event payloads are not inspected.
+persist input data. Keyboard, mouse, scroll and resize listeners wake the render loop. Window focus,
+page visibility and the system reduced-motion preference control suspension. Typed text is not read.
 
 Load the script from a local `file:///` URI and review third-party scripts before injecting them.
 See [SECURITY.md](./SECURITY.md) for private reporting instructions.
@@ -107,6 +123,8 @@ See [SECURITY.md](./SECURITY.md) for private reporting instructions.
 ## Troubleshooting
 
 - **No animation:** verify the `file:///` URI, run `Enable Custom CSS and JS`, and restart VS Code.
+- **Animation is paused:** check the system reduced-motion preference and window focus. Set
+  `respectReducedMotion` to `false` only if you want to override that preference.
 - **Stopped working after an update:** run `Enable Custom CSS and JS`, then
   `Reload Custom CSS and JS`, and restart VS Code.
 - **VS Code reports a modified installation:** this is a known consequence of workbench injection.

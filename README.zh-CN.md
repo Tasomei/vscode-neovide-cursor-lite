@@ -10,6 +10,8 @@
 - 无网络请求、遥测或持久化存储
 - 空闲时暂停动画循环
 
+当前工作树正在准备 **0.2.0**；正式发布前，下方最新版下载链接仍提供已发布版本。
+
 [下载 `cursor-trail.js`](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/latest/download/cursor-trail.js)
 · [查看全部版本](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases)
 
@@ -70,14 +72,23 @@ Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
 | `fadeMs` | `180` | 淡出持续时间 |
 | `animationLength` | `0.16` | 较长距离移动时的弹簧时长 |
 | `shortAnimationLength` | `0.065` | 短距离移动时的弹簧时长 |
-| `maxDrawWidth` | `4` | 动画光标的最大宽度 |
+| `maxDrawWidth` | `4` | 普通线状光标拖尾的最大宽度 |
 | `maxDevicePixelRatio` | `2` | 画布设备像素比上限 |
 | `idleGraceMs` | `250` | 输入后保持渲染循环活跃的最短时间 |
+| `respectReducedMotion` | `true` | 系统要求减少动态效果时使用原生光标 |
+| `pauseWhenWindowBlurred` | `true` | 窗口失焦时暂停绘制和扫描 |
 | `useShadow` | `false` | 可选的发光效果 |
 | `zIndex` | `100` | 覆盖层的堆叠层级 |
 | `fallbackColor` | `#ca9ee6` | 无法读取主题颜色时使用的备用颜色 |
 
 修改配置后请运行 `Reload Custom CSS and JS`。
+
+动画自动跟随 `editor.cursorStyle`，支持 `line`、`line-thin`、`block`、`block-outline`、
+`underline` 和 `underline-thin`。普通线状光标保留原有窄拖尾，其余形状使用原生尺寸。
+形状变化直接从 Monaco 渲染的光标识别，包括 Vim 扩展触发的变化，无需另设 Vim 专属参数。
+
+窗口隐藏时始终暂停绘制和扫描。系统动态效果偏好或窗口焦点改变后立即生效，无需重新加载。
+恢复时从光标当前位置开始，不补播后台发生的移动。
 
 ## 兼容性
 
@@ -91,11 +102,15 @@ Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
 本项目使用非官方工作台注入机制。VS Code 更新后可能需要重新启用脚本，内部 DOM 变化也
 可能影响动画。
 
+0.2.0 已有光标几何和生命周期的自动化回归测试；VS Code 与 VSCodeVim 的人工验收仍待完成，
+这些测试不代表所有扩展组合均已验证兼容。
+
 ## 隐私
 
 脚本只读取光标的位置、尺寸、可见性和颜色来绘制动画。它不会发起网络请求，不会访问
 Cookie、存储或剪贴板，不会执行系统命令，也不会持久化输入数据。键盘、鼠标、滚动和窗口
-尺寸监听器只用于唤醒暂停的渲染循环，不会检查事件载荷。
+尺寸监听器用于唤醒渲染循环；窗口焦点、页面可见性和系统动态效果偏好用于控制暂停。
+不会读取键入的文字。
 
 请通过本地 `file:///` URI 加载脚本，并在注入第三方脚本前检查其内容。私密报告方式见
 [SECURITY.md](./SECURITY.md)。
@@ -103,6 +118,8 @@ Cookie、存储或剪贴板，不会执行系统命令，也不会持久化输�
 ## 故障排查
 
 - **没有动画：**检查 `file:///` URI，运行 `Enable Custom CSS and JS`，然后重启 VS Code。
+- **动画暂停：**检查系统的减少动态效果设置和窗口焦点。如需主动覆盖系统偏好，可将
+  `respectReducedMotion` 设为 `false`。
 - **更新后失效：**运行 `Enable Custom CSS and JS`，再运行 `Reload Custom CSS and JS`，然后重启 VS Code。
 - **VS Code 提示安装已被修改：**这是工作台注入机制的已知结果。
 - **拖尾显示在菜单上方：**调低 `CONFIG.zIndex`。

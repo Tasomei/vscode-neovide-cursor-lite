@@ -1,7 +1,11 @@
 # Publishing Guide
 
-本清单供仓库维护者发布正式版本时使用。示例版本为 `0.1.2`，所有命令均在仓库根目录的
+本清单供仓库维护者发布正式版本时使用。示例版本为 `0.2.0`，所有命令均在仓库根目录的
 PowerShell 7 中执行。
+
+0.2.0 尚在开发验收阶段。先在 VS Code 中确认默认手感、光标形状、Vim 模式切换、分屏、
+Diff、搜索框和暂停恢复行为，再执行提交标签及发布步骤。发布时更新 CHANGELOG 的日期和
+比较链接，并移除两份 README 中的开发版本及待验收提示。
 
 ## 1. 核对发布内容
 
@@ -14,7 +18,7 @@ git status --short --branch
 检查相对上一版本的完整差异：
 
 ```powershell
-git diff v0.1.1 --
+git diff v0.1.2 --
 ```
 
 确认 `VERSION`、`CHANGELOG.md` 和准备发布的标签版本一致。
@@ -47,12 +51,12 @@ node scripts/prepare-release.js
 git diff --check
 ```
 
-生成结果应位于 `dist/v0.1.2/`，并且只包含 `cursor-trail.js` 和 `SHA256SUMS.txt`。
+生成结果应位于 `dist/v0.2.0/`，并且只包含 `cursor-trail.js` 和 `SHA256SUMS.txt`。
 
 复核发布文件的实际哈希：
 
 ```powershell
-Get-FileHash -Algorithm SHA256 "dist\v0.1.2\cursor-trail.js"
+Get-FileHash -Algorithm SHA256 "dist\v0.2.0\cursor-trail.js"
 ```
 
 检查凭据和私钥；正常情况下没有输出：
@@ -81,7 +85,7 @@ rg -n "fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|document\.cookie|lo
 未经检查的 `git add .`。
 
 ```powershell
-git add .gitignore VERSION README.md README.zh-CN.md CHANGELOG.md .github/ISSUE_TEMPLATE .github/workflows/ci.yml scripts/prepare-release.js tests/release-assets.test.js docs/PUBLISHING.md
+git add VERSION README.md README.zh-CN.md CHANGELOG.md cursor-trail.js tests/cursor-trail.test.js docs/PUBLISHING.md
 ```
 
 ```powershell
@@ -93,17 +97,17 @@ git diff --cached --stat
 ```
 
 ```powershell
-git commit -m "Release v0.1.2"
+git commit -m "Release v0.2.0"
 ```
 
 创建指向发布提交的附注标签：
 
 ```powershell
-git tag -a v0.1.2 -m "v0.1.2"
+git tag -a v0.2.0 -m "v0.2.0"
 ```
 
 ```powershell
-git show --no-patch --decorate v0.1.2
+git show --no-patch --decorate v0.2.0
 ```
 
 ## 4. 推送
@@ -120,11 +124,11 @@ git push origin main --follow-tags
 
 先创建草稿并核对以下内容：
 
-- Tag：`v0.1.2`
-- Title：`v0.1.2`
-- Previous tag：`v0.1.1`
-- Release notes：使用 `CHANGELOG.md` 中 `0.1.2` 的内容
-- Assets：上传 `dist/v0.1.2/cursor-trail.js` 和 `dist/v0.1.2/SHA256SUMS.txt`
+- Tag：`v0.2.0`
+- Title：`v0.2.0`
+- Previous tag：`v0.1.2`
+- Release notes：使用 `CHANGELOG.md` 中 `0.2.0` 的内容
+- Assets：上传 `dist/v0.2.0/cursor-trail.js` 和 `dist/v0.2.0/SHA256SUMS.txt`
 - Pre-release：不勾选
 
 发布前确认两个资产名称保持不变，否则 README 中的稳定下载链接会失效。
