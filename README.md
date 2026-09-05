@@ -10,9 +10,6 @@ A performance-first, auditable Neovide-style cursor animation for Visual Studio 
 - No network requests, telemetry or persistent storage
 - Suspends its animation loop while idle
 
-The working tree is preparing **0.2.0**; the latest-release link below still serves the published
-version until 0.2.0 is released.
-
 [Download `cursor-trail.js`](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/latest/download/cursor-trail.js)
 · [All releases](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases)
 
@@ -94,6 +91,9 @@ including changes requested by Vim extensions; no separate Vim settings are requ
 
 Hidden windows always suspend rendering and scanning. Reduced-motion or focus changes take effect
 without reloading. Resuming starts at the current caret position without replaying background moves.
+Moving focus between split or Diff editors animates from the previously focused caret while retaining
+its geometry and a bounded elastic trail. Newly created secondary carets still begin at their own position
+and do not produce unrelated cross-editor trails.
 
 ## Compatibility
 
@@ -107,8 +107,8 @@ without reloading. Resuming starts at the current caret position without replayi
 The project uses an unofficial workbench-injection mechanism. A VS Code update can require the
 script to be enabled again and may change internal DOM details used by the animation.
 
-0.2.0 has automated geometry and lifecycle regression coverage. VS Code and VSCodeVim manual
-acceptance is still pending; these tests do not establish compatibility with every extension.
+0.2.0 has automated geometry and lifecycle regression coverage and has been manually accepted in
+VS Code on Windows 11. Compatibility with every extension configuration remains unverified.
 
 ## Privacy
 

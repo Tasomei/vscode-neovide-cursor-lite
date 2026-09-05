@@ -4,22 +4,22 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-09-05
 
 ### Added
 
 - Automatic native line, thin line, block, outline and underline cursor geometry.
 - Reduced-motion preference support with live updates and a native-caret fallback.
 - Rendering and scan suspension while the window is unfocused or hidden.
+- Focus transitions between split and Diff editors with native geometry and bounded elastic trails.
 - Regression coverage for shape changes, multiple carets, editor transitions and suspension.
 
 ### Fixed
 
-- Start newly visible or reparented carets at their own position instead of another editor's caret.
+- Start unrelated newly visible or reparented carets at their own position instead of another editor's caret.
 - Refresh stationary caret colours after style changes and preserve opaque RGB colours ending in zero.
 
 Regular line-cursor spring parameters and the default narrow trail are unchanged.
-Manual acceptance in VS Code and VSCodeVim is pending.
 
 ### Removed
 
@@ -72,8 +72,8 @@ The runtime animation and its default feel are unchanged in this release.
 - Automatic cleanup when the script is injected again.
 - Single-file distribution with no build step or runtime dependency.
 
-[Unreleased]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.2...HEAD
-[0.2.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/tag/v0.1.0

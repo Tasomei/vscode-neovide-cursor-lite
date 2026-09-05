@@ -163,6 +163,7 @@ function createHarness(options = {}) {
     cursor.layer = new FakeElement("div");
     cursor.layer.classList.add("cursor-line-style");
     cursor.editor = new FakeElement("div");
+    cursor.editor.classList.add("focused");
     const cursors = [cursor];
     const mediaQuery = {
         matches: options.reducedMotion ?? false,
@@ -610,6 +611,79 @@ test("isolates new split/diff carets, multicursor additions and removed carets",
         assert.equal(harness.drawings.length, 1);
         harness.drainFrames();
     }
+    harness.window[GLOBAL_KEY].dispose();
+});
+
+test("animates between focused split editors without seeding unrelated carets", () => {
+    const harness = createHarness();
+    harness.inject();
+    harness.drainFrames();
+
+    const secondEditor = harness.document.createElement("div");
+    const second = harness.addCursor(
+        { left: 500, top: 80, width: 6, height: 18 },
+        secondEditor
+    );
+    harness.tickIntervals();
+    harness.drainFrames();
+
+    harness.cursor.editor.classList.remove("focused");
+    secondEditor.classList.add("focused");
+    harness.tickIntervals();
+    harness.runFrame();
+
+    assert.equal(second.classList.contains(HIDDEN_CLASS), true);
+    const transitionBounds = bounds(harness.drawings[harness.drawings.length - 1]);
+    assert.ok(transitionBounds.left < 100,
+        "the focused caret should start from the previous editor");
+    assert.ok(transitionBounds.width > 6,
+        "the split transition should retain a visible trail");
+    assert.ok(transitionBounds.width <= 120,
+        "the split transition trail should remain bounded instead of becoming a screen-wide band");
+    const transitionPoints = harness.drawings[harness.drawings.length - 1].points;
+    assert.ok(new Set(transitionPoints.map((point) => Math.round(point.x))).size >= 3,
+        "the split transition should deform its corners instead of translating a rectangle");
+
+    const extra = harness.addCursor(
+        { left: 650, top: 80, width: 6, height: 18 },
+        secondEditor
+    );
+    extra.computedStyle.transform = "none";
+    harness.tickIntervals();
+    harness.runFrame();
+    assert.equal(bounds(harness.drawings[harness.drawings.length - 1]).left, 650);
+    // 画布正在绘制其他光标时，次要光标由同一画布接管以避免重影。
+    assert.equal(extra.classList.contains(HIDDEN_CLASS), true);
+    harness.window[GLOBAL_KEY].dispose();
+});
+
+test("preserves a thick cursor and its trail when Vim updates the target shape", () => {
+    const harness = createHarness();
+    harness.setShape("block");
+    harness.cursor.rect.width = 12;
+    harness.inject();
+    harness.drainFrames();
+
+    const secondEditor = harness.document.createElement("div");
+    const second = harness.addCursor(
+        { left: 20, top: 300, width: 6, height: 18 },
+        secondEditor
+    );
+    harness.tickIntervals();
+    harness.drainFrames();
+
+    harness.cursor.editor.classList.remove("focused");
+    secondEditor.classList.add("focused");
+    harness.tickIntervals();
+    harness.runFrame();
+    assert.ok(bounds(harness.drawings[harness.drawings.length - 1]).width >= 10);
+
+    harness.setShape("block", second);
+    second.rect.width = 12;
+    harness.runFrame();
+    assert.equal(second.classList.contains(HIDDEN_CLASS), true);
+    assert.ok(bounds(harness.drawings[harness.drawings.length - 1]).width >= 10);
+    harness.drainFrames();
     harness.window[GLOBAL_KEY].dispose();
 });
 

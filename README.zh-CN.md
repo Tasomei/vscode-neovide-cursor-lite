@@ -10,8 +10,6 @@
 - 无网络请求、遥测或持久化存储
 - 空闲时暂停动画循环
 
-当前工作树正在准备 **0.2.0**；正式发布前，下方最新版下载链接仍提供已发布版本。
-
 [下载 `cursor-trail.js`](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/latest/download/cursor-trail.js)
 · [查看全部版本](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases)
 
@@ -89,6 +87,9 @@ Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
 
 窗口隐藏时始终暂停绘制和扫描。系统动态效果偏好或窗口焦点改变后立即生效，无需重新加载。
 恢复时从光标当前位置开始，不补播后台发生的移动。
+在分屏或 Diff 编辑器之间切换焦点时，动画从上一个焦点光标跨屏过渡，并保留
+原光标形状和受限长度的弹性拖尾。新建的次要光标仍从自身位置开始，不会产生
+无关的跨编辑器拖尾。
 
 ## 兼容性
 
@@ -102,8 +103,8 @@ Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
 本项目使用非官方工作台注入机制。VS Code 更新后可能需要重新启用脚本，内部 DOM 变化也
 可能影响动画。
 
-0.2.0 已有光标几何和生命周期的自动化回归测试；VS Code 与 VSCodeVim 的人工验收仍待完成，
-这些测试不代表所有扩展组合均已验证兼容。
+0.2.0 已有光标几何和生命周期的自动化回归测试，并已在 Windows 11 的 VS Code 中完成人工
+手感验收；仍不能代表所有扩展配置均已验证兼容。
 
 ## 隐私
 

@@ -275,10 +275,28 @@
         let initialized = false;
         let jumped = false;
         let outline = false;
+        let transfer = null;
         let lastTime = performance.now();
 
+        function prepareJump(nextCenter, nextDimensions, movement) {
+            const ranks = new Array(corners.length);
+            corners
+                .map((corner, index) => ({
+                    index,
+                    value: corner.getAlignment(nextCenter, nextDimensions)
+                }))
+                .sort((a, b) => a.value - b.value)
+                .forEach((item, rank) => {
+                    ranks[item.index] = rank;
+                });
+
+            corners.forEach((corner, index) => {
+                corner.jump(nextCenter, nextDimensions, movement, ranks[index]);
+            });
+        }
+
         return {
-            move(rect, nextColor, immediate = false) {
+            move(rect, nextColor, immediate = false, sourceVisual = null) {
                 const nextDimensions = {
                     width: rect.shape === "line"
                         ? clamp(rect.width, CONFIG.minWidth, CONFIG.maxDrawWidth)
@@ -289,11 +307,42 @@
                     x: rect.left + nextDimensions.width / 2,
                     y: rect.top + nextDimensions.height / 2
                 };
-                const startCenter = initialized && !immediate ? center : nextCenter;
-
-                dimensions = nextDimensions;
+                const nextOutline = rect.shape === "block-outline";
                 color = nextColor || color;
-                outline = rect.shape === "block-outline";
+
+                if (sourceVisual) {
+                    // 跨编辑器时保留原光标形状，并在受限拉伸内绘制拖尾。
+                    dimensions = { ...sourceVisual.dimensions };
+                    outline = sourceVisual.outline;
+                    corners.forEach((corner) => corner.setAt(sourceVisual.center, dimensions));
+                    initialized = true;
+                    previousCenter = sourceVisual.center;
+                    center = nextCenter;
+                    jumped = false;
+                    transfer = {
+                        start: { ...sourceVisual.center },
+                        end: { ...nextCenter },
+                        startDimensions: { ...sourceVisual.dimensions },
+                        endDimensions: { ...nextDimensions },
+                        startOutline: sourceVisual.outline,
+                        endOutline: nextOutline,
+                        elapsed: 0
+                    };
+                    return;
+                }
+
+                if (transfer && !immediate) {
+                    center = nextCenter;
+                    transfer.end = { ...nextCenter };
+                    transfer.endDimensions = { ...nextDimensions };
+                    transfer.endOutline = nextOutline;
+                    return;
+                }
+
+                transfer = null;
+                dimensions = nextDimensions;
+                outline = nextOutline;
+                const startCenter = initialized && !immediate ? center : nextCenter;
 
                 if (!initialized || immediate) {
                     corners.forEach((corner) => corner.setAt(startCenter, dimensions));
@@ -303,6 +352,10 @@
                 previousCenter = startCenter;
                 center = nextCenter;
                 jumped = true;
+            },
+
+            isTransferring() {
+                return Boolean(transfer);
             },
 
             // Reset the clock after an idle suspension so the first resumed frame does not include
@@ -318,35 +371,72 @@
                 const dt = Math.min((now - lastTime) / 1000, 1 / 30);
                 lastTime = now;
 
-                if (jumped) {
+                let transferAnimating = false;
+                let transferFrame = false;
+                if (transfer) {
+                    transfer.elapsed += dt;
+                    const progress = clamp(transfer.elapsed / CONFIG.animationLength, 0, 1);
+                    const eased = progress * progress * (3 - 2 * progress);
+                    const transferCenter = {
+                        x: transfer.start.x + (transfer.end.x - transfer.start.x) * eased,
+                        y: transfer.start.y + (transfer.end.y - transfer.start.y) * eased
+                    };
+                    dimensions = {
+                        width: transfer.startDimensions.width +
+                            (transfer.endDimensions.width - transfer.startDimensions.width) * eased,
+                        height: transfer.startDimensions.height +
+                            (transfer.endDimensions.height - transfer.startDimensions.height) * eased
+                    };
+                    outline = eased < 0.5 ? transfer.startOutline : transfer.endOutline;
+                    corners.forEach((corner) => corner.setAt(transferCenter, dimensions));
+                    const direction = normalize({
+                        x: transfer.end.x - transfer.start.x,
+                        y: transfer.end.y - transfer.start.y
+                    });
+                    const trailLength = Math.max(dimensions.width, dimensions.height) * 5 *
+                        Math.sin(Math.PI * progress);
+                    const rankedCorners = corners
+                        .map((corner, index) => ({
+                            corner,
+                            index,
+                            alignment:
+                                corner.relativePoint.x * direction.x +
+                                corner.relativePoint.y * direction.y
+                        }))
+                        .sort((a, b) => a.alignment - b.alignment || a.index - b.index);
+                    const longestTrail = Math.max(...CONFIG.rankTrailFactors);
+                    rankedCorners.forEach(({ corner }, rank) => {
+                        // 沿用普通拖尾的四角快慢层次，避免跨屏时只像矩形平移。
+                        const weight = (CONFIG.rankTrailFactors[rank] || 0) / longestTrail;
+                        corner.current.x -= direction.x * trailLength * weight;
+                        corner.current.y -= direction.y * trailLength * weight;
+                    });
+                    transferFrame = true;
+                    transferAnimating = progress < 1;
+                    if (!transferAnimating) {
+                        center = { ...transfer.end };
+                        dimensions = { ...transfer.endDimensions };
+                        outline = transfer.endOutline;
+                        transfer = null;
+                    }
+                }
+
+                if (!transferFrame && jumped) {
                     const movement = previousCenter
                         ? { x: center.x - previousCenter.x, y: center.y - previousCenter.y }
                         : { x: 0, y: 0 };
-
-                    const ranks = new Array(corners.length);
-                    corners
-                        .map((corner, index) => ({
-                            index,
-                            value: corner.getAlignment(center, dimensions)
-                        }))
-                        .sort((a, b) => a.value - b.value)
-                        .forEach((item, rank) => {
-                            ranks[item.index] = rank;
-                        });
-
-                    corners.forEach((corner, index) => {
-                        corner.jump(center, dimensions, movement, ranks[index]);
-                    });
-
+                    prepareJump(center, dimensions, movement);
                     jumped = false;
                 }
 
-                let animating = false;
-                corners.forEach((corner) => {
-                    if (corner.update(center, dimensions, dt, immediate)) {
-                        animating = true;
-                    }
-                });
+                let animating = transferAnimating;
+                if (!transferFrame) {
+                    corners.forEach((corner) => {
+                        if (corner.update(center, dimensions, dt, immediate)) {
+                            animating = true;
+                        }
+                    });
+                }
 
                 context.save();
                 context.globalAlpha = CONFIG.opacity;
@@ -381,6 +471,8 @@
     class CursorManager {
         constructor() {
             this.cursors = new Map();
+            this.focusedEditor = null;
+            this.focusedVisual = null;
             this.paused = true;
             this.disposed = false;
             this.windowFocused = document.hasFocus();
@@ -499,6 +591,8 @@
                 this.cursors.forEach((_, cursor) => cursor.classList.remove(HIDDEN_CLASS));
                 // 丢弃旧坐标，恢复时从各光标的新位置开始，不补播后台移动。
                 this.cursors.clear();
+                this.focusedEditor = null;
+                this.focusedVisual = null;
             } else {
                 this.resize();
                 this.scan();
@@ -607,6 +701,8 @@
 
                 const styleState = this.readCursorStyle(cursor);
                 const existing = this.cursors.get(cursor);
+                const editor = cursor.closest(".monaco-editor");
+                const editorFocused = editor?.classList?.contains("focused");
 
                 if (existing) {
                     // A caret can become visible without moving. Wake the loop explicitly because
@@ -616,9 +712,13 @@
                         existing.styleDirty = true;
                         shouldWake = true;
                     }
+                    if (existing.editorFocused !== editorFocused) {
+                        shouldWake = true;
+                    }
 
                     existing.color = styleState.color;
                     existing.styleVisible = styleState.styleVisible;
+                    existing.editorFocused = editorFocused;
                     return;
                 }
 
@@ -633,7 +733,8 @@
                     lastRect: rect,
                     color: styleState.color,
                     styleVisible: styleState.styleVisible,
-                    editor: cursor.closest(".monaco-editor"),
+                    editor,
+                    editorFocused,
                     styleDirty: false,
                     active: false
                 });
@@ -698,6 +799,9 @@
             this.context.clearRect(0, 0, this.viewportWidth, this.viewportHeight);
 
             let anyAnimating = false;
+            let nextFocusedEditor = null;
+            let nextFocusedVisual = null;
+            let focusTransferUsed = false;
 
             this.cursors.forEach((data, cursor) => {
                 if (!cursor.isConnected) {
@@ -717,24 +821,55 @@
 
                 const moved = rectChanged(data.lastRect, rect);
                 const editor = cursor.closest(".monaco-editor");
+                const editorFocused = editor?.classList?.contains("focused");
+                const transferSource = editorFocused && this.focusedEditor &&
+                    editor !== this.focusedEditor && this.focusedVisual && !focusTransferUsed
+                    ? this.focusedVisual
+                    : null;
                 const reset = !data.active || data.editor !== editor ||
                     data.lastRect?.shape !== rect.shape;
 
-                if (reset) {
+                if (transferSource) {
+                    // 只有真正的编辑器焦点切换才跨分屏过渡，新增多光标不借用该起点。
+                    data.instance.move(rect, data.color, false, transferSource);
+                    data.active = true;
+                    focusTransferUsed = true;
+                } else if (reset && !data.instance.isTransferring()) {
                     data.instance.move(rect, data.color, true);
                     data.active = true;
-                } else if (moved || data.styleDirty) {
+                } else if (moved || data.styleDirty || reset) {
                     data.instance.move(rect, data.color);
                 }
 
                 data.lastRect = rect;
                 data.editor = editor;
+                data.editorFocused = editorFocused;
                 data.styleDirty = false;
+
+                if (editorFocused && !nextFocusedEditor) {
+                    const width = rect.shape === "line"
+                        ? clamp(rect.width, CONFIG.minWidth, CONFIG.maxDrawWidth)
+                        : rect.width;
+                    nextFocusedEditor = editor;
+                    nextFocusedVisual = {
+                        center: {
+                            x: rect.left + width / 2,
+                            y: rect.top + rect.height / 2
+                        },
+                        dimensions: { width, height: rect.height },
+                        outline: rect.shape === "block-outline"
+                    };
+                }
 
                 if (data.instance.draw(this.context, this.isScrolling)) {
                     anyAnimating = true;
                 }
             });
+
+            if (nextFocusedEditor) {
+                this.focusedEditor = nextFocusedEditor;
+                this.focusedVisual = nextFocusedVisual;
+            }
 
             if (anyAnimating) {
                 this.lastAnimationAt = performance.now();
