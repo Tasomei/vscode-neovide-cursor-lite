@@ -81,7 +81,7 @@ rg -n "fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|document\.cookie|lo
 未经检查的 `git add .`。
 
 ```powershell
-git add .gitignore VERSION README.md README.zh-CN.md CHANGELOG.md assets .github/ISSUE_TEMPLATE .github/workflows/ci.yml scripts/prepare-release.js tests/release-assets.test.js docs/PUBLISHING.md
+git add .gitignore VERSION README.md README.zh-CN.md CHANGELOG.md .github/ISSUE_TEMPLATE .github/workflows/ci.yml scripts/prepare-release.js tests/release-assets.test.js docs/PUBLISHING.md
 ```
 
 ```powershell
@@ -135,6 +135,3 @@ git push origin main --follow-tags
 - GitHub Actions 中的 CI 已通过；
 - README 中的 `releases/latest/download/cursor-trail.js` 可以直接下载；
 - 下载后的 SHA-256 与 `SHA256SUMS.txt` 一致。
-
-仓库社交预览图不会由 Release 自动更新，需要使用 `assets/social-preview.png` 在仓库设置中
-单独配置。

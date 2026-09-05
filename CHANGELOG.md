@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Removed
+
+- The unused repository social-preview image.
+
 ## [0.1.2] - 2026-09-04
 
 ### Added
