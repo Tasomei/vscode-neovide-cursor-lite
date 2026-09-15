@@ -1,12 +1,42 @@
 # Publishing Guide
 
-本清单供仓库维护者发布正式版本时使用。示例版本为 `0.2.0`，所有命令均在仓库根目录的
-PowerShell 7 中执行。
+本清单供仓库维护者发布正式版本时使用。所有命令均在仓库根目录的同一个 PowerShell 7
+会话中执行。
 
 发布前应在 VS Code 中确认默认手感、光标形状、Vim 模式切换、分屏、Diff、搜索框和暂停
 恢复行为。`CHANGELOG.md` 的日期和比较链接、两份 README 的版本状态必须与发布候选一致。
 
 ## 1. 核对发布内容
+
+普通开发期间让 `VERSION` 保持当前正式版本，并把新内容记录在 `[Unreleased]`。准备发布时，
+先把 `VERSION` 更新为目标版本，再将对应 CHANGELOG 内容移入带正式日期的版本条目；完成这两项
+后再执行下列命令。
+
+从 `VERSION` 读取当前版本，并推导标签、上一版本标签和资产目录：
+
+```powershell
+$version = (Get-Content -LiteralPath "VERSION" -Raw).Trim()
+```
+
+```powershell
+$tag = "v$version"
+```
+
+```powershell
+$previousTag = git tag --merged HEAD --sort=-version:refname | Where-Object { $_ -ne $tag } | Select-Object -First 1
+```
+
+```powershell
+if (-not $previousTag) { throw "No previous release tag found." }
+```
+
+```powershell
+$assetDirectory = Join-Path "dist" $tag
+```
+
+```powershell
+[PSCustomObject]@{ Version = $version; Tag = $tag; PreviousTag = $previousTag; Assets = $assetDirectory }
+```
 
 确认工作区只包含本次版本需要的修改：
 
@@ -17,10 +47,19 @@ git status --short --branch
 检查相对上一版本的完整差异：
 
 ```powershell
-git diff v0.1.2 --
+git diff "$previousTag" --
 ```
 
-确认 `VERSION`、`CHANGELOG.md` 和准备发布的标签版本一致。
+确认输出正确，并确认 `VERSION`、`CHANGELOG.md` 和准备发布的标签版本一致。以下两条命令
+正常情况下均没有输出，表示本地和远程尚未存在当前标签：
+
+```powershell
+git tag --list "$tag"
+```
+
+```powershell
+git ls-remote --tags origin "refs/tags/$tag"
+```
 
 确认提交身份使用 GitHub noreply 邮箱：
 
@@ -50,12 +89,18 @@ node scripts/prepare-release.js
 git diff --check
 ```
 
-生成结果应位于 `dist/v0.2.0/`，并且只包含 `cursor-trail.js` 和 `SHA256SUMS.txt`。
+打包脚本会拒绝无效 `VERSION`、缺失或重复的 CHANGELOG 版本条目，以及 `Unreleased` 或无效
+日期。生成目录应与 `$assetDirectory` 一致，并且只包含 `cursor-trail.js` 和
+`SHA256SUMS.txt`：
+
+```powershell
+Get-ChildItem -LiteralPath $assetDirectory
+```
 
 复核发布文件的实际哈希：
 
 ```powershell
-Get-FileHash -Algorithm SHA256 "dist\v0.2.0\cursor-trail.js"
+Get-FileHash -Algorithm SHA256 (Join-Path $assetDirectory "cursor-trail.js")
 ```
 
 检查凭据和私钥；正常情况下没有输出：
@@ -80,11 +125,11 @@ rg -n "fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|document\.cookie|lo
 
 ## 3. 提交并创建本地标签
 
-发布前更新 `VERSION`、`CHANGELOG.md` 中的版本号和日期。明确暂存本次发布文件，不要使用
-未经检查的 `git add .`。
+根据 `git status` 明确暂存本次实际修改的文件，不要使用未经检查的 `git add .`。以下列表
+仅覆盖本项目常见发布文件，应按当前差异删减或补充：
 
 ```powershell
-git add VERSION README.md README.zh-CN.md CHANGELOG.md cursor-trail.js tests/cursor-trail.test.js docs/PUBLISHING.md
+git add -- VERSION CHANGELOG.md README.md README.zh-CN.md cursor-trail.js docs/PUBLISHING.md scripts/prepare-release.js tests/cursor-trail.test.js tests/release-assets.test.js
 ```
 
 ```powershell
@@ -96,17 +141,17 @@ git diff --cached --stat
 ```
 
 ```powershell
-git commit -m "Release v0.2.0"
+git commit -m "Release $tag"
 ```
 
 创建指向发布提交的附注标签：
 
 ```powershell
-git tag -a v0.2.0 -m "v0.2.0"
+git tag -a "$tag" -m "$tag"
 ```
 
 ```powershell
-git show --no-patch --decorate v0.2.0
+git show --no-patch --decorate "$tag"
 ```
 
 ## 4. 推送
@@ -123,11 +168,11 @@ git push origin main --follow-tags
 
 先创建草稿并核对以下内容：
 
-- Tag：`v0.2.0`
-- Title：`v0.2.0`
-- Previous tag：`v0.1.2`
-- Release notes：使用 `CHANGELOG.md` 中 `0.2.0` 的内容
-- Assets：上传 `dist/v0.2.0/cursor-trail.js` 和 `dist/v0.2.0/SHA256SUMS.txt`
+- Tag：`$tag`
+- Title：`$tag`
+- Previous tag：`$previousTag`
+- Release notes：使用 `CHANGELOG.md` 中 `$version` 的内容
+- Assets：上传 `$assetDirectory/cursor-trail.js` 和 `$assetDirectory/SHA256SUMS.txt`
 - Pre-release：不勾选
 
 发布前确认两个资产名称保持不变，否则 README 中的稳定下载链接会失效。

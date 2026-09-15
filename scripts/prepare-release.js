@@ -8,23 +8,54 @@ function normalizeLineEndings(value) {
     return value.replace(/\r\n?/g, "\n");
 }
 
-function readVersion() {
-    const version = fs.readFileSync(path.join(ROOT, "VERSION"), "utf8").trim();
+function validateVersion(value) {
+    const version = value.trim();
 
-    if (!/^\d+\.\d+\.\d+$/.test(version)) {
+    if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(version)) {
         throw new Error(`Invalid VERSION value: ${version}`);
     }
 
     return version;
 }
 
+function readVersion() {
+    return validateVersion(fs.readFileSync(path.join(ROOT, "VERSION"), "utf8"));
+}
+
+function validateChangelog(version, changelog) {
+    const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const headingPattern = new RegExp(
+        `^## \\[${escapedVersion}\\](?: - ([^\\r\\n]+))?\\r?$`,
+        "gm"
+    );
+    const entries = [...changelog.matchAll(headingPattern)];
+
+    if (entries.length !== 1) {
+        throw new Error(
+            `CHANGELOG.md must contain exactly one ${version} release heading`
+        );
+    }
+
+    const releaseDate = entries[0][1] || "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(releaseDate)) {
+        throw new Error(
+            `CHANGELOG.md entry for ${version} must use a YYYY-MM-DD release date`
+        );
+    }
+
+    const parsedDate = new Date(`${releaseDate}T00:00:00Z`);
+    if (Number.isNaN(parsedDate.getTime()) ||
+        parsedDate.toISOString().slice(0, 10) !== releaseDate) {
+        throw new Error(`CHANGELOG.md entry for ${version} has an invalid release date`);
+    }
+
+    return releaseDate;
+}
+
 function prepareRelease(outputRoot = path.join(ROOT, "dist")) {
     const version = readVersion();
     const changelog = fs.readFileSync(path.join(ROOT, "CHANGELOG.md"), "utf8");
-
-    if (!changelog.includes(`## [${version}]`)) {
-        throw new Error(`CHANGELOG.md does not contain a ${version} release entry`);
-    }
+    validateChangelog(version, changelog);
 
     const sourcePath = path.join(ROOT, "cursor-trail.js");
     const source = Buffer.from(
@@ -37,9 +68,6 @@ function prepareRelease(outputRoot = path.join(ROOT, "dist")) {
     const checksum = crypto.createHash("sha256").update(source).digest("hex");
 
     fs.mkdirSync(outputDirectory, { recursive: true });
-    fs.writeFileSync(outputPath, source);
-    fs.writeFileSync(checksumPath, `${checksum}  cursor-trail.js\n`, "ascii");
-
     const expectedFiles = new Set(["cursor-trail.js", "SHA256SUMS.txt"]);
     const unexpectedFiles = fs
         .readdirSync(outputDirectory)
@@ -48,6 +76,9 @@ function prepareRelease(outputRoot = path.join(ROOT, "dist")) {
     if (unexpectedFiles.length > 0) {
         throw new Error(`Unexpected release assets: ${unexpectedFiles.join(", ")}`);
     }
+
+    fs.writeFileSync(outputPath, source);
+    fs.writeFileSync(checksumPath, `${checksum}  cursor-trail.js\n`, "ascii");
 
     return {
         version,
@@ -72,4 +103,10 @@ if (require.main === module) {
     );
 }
 
-module.exports = { normalizeLineEndings, prepareRelease, readVersion };
+module.exports = {
+    normalizeLineEndings,
+    prepareRelease,
+    readVersion,
+    validateChangelog,
+    validateVersion
+};

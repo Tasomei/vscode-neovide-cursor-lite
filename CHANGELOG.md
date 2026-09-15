@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Regression coverage for invalid versions, incomplete release entries and unexpected assets.
+
+### Changed
+
+- Validate semantic versions and dated CHANGELOG entries before writing release assets.
+- Derive publishing-guide versions, tags and asset paths from repository state.
+
 ## [0.2.0] - 2026-09-05
 
 ### Added
