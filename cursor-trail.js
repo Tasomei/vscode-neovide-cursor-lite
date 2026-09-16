@@ -1,25 +1,20 @@
-// VS Code Neovide-like cursor, designed for Custom CSS and JS Loader.
+// 适用于 Custom CSS and JS Loader 的 VS Code Neovide 风格光标动画。
 (function () {
     const CONFIG = {
         opacity: 0.88,
         holdMs: 170,
         fadeMs: 180,
-        // Keep the overlay above editor text but below command palettes, context menus and hovers.
-        // Otherwise the trail can remain visible over those surfaces while it fades out.
+        // 画布置于正文上方、菜单及悬浮组件下方，避免拖尾遮挡界面。
         zIndex: 100,
         minWidth: 2,
-        // Keep the trail narrower than common editor.cursorWidth values. The narrow shape during
-        // movement is part of the Neovide smear effect; increasing this value makes it heavier.
+        // 限制普通线状光标的拖尾宽度，保留细长形变。
         maxDrawWidth: 4,
-        // Full-screen canvas memory grows with the square of the device pixel ratio. This cap
-        // limits GPU memory use on very high-DPI displays without affecting ratios up to 2x.
+        // 限制画布像素比，控制随像素比平方增长的显存占用。
         maxDevicePixelRatio: 2,
         scanIntervalMs: 100,
-        // Keep the loop active for at least this long after a wake-up. A capture-phase keydown
-        // occurs before VS Code updates the caret DOM; suspending immediately would defer the
-        // resulting movement until the next scan and make the animation appear delayed.
+        // 输入后短暂保持渲染，等待 VS Code 更新光标 DOM，避免首帧延迟。
         idleGraceMs: 250,
-        // 尊重系统的减少动态效果偏好，并在窗口失焦时暂停。
+        // 遵循系统减少动态效果设置，窗口失焦时暂停。
         respectReducedMotion: true,
         pauseWhenWindowBlurred: true,
 
@@ -29,8 +24,7 @@
         shortMoveVerticalThreshold: 0.2,
 
         rankTrailFactors: [1.05, 0.82, 0.36, 0.08],
-        // Let the corner facing the movement direction converge faster than the trailing corners.
-        // This shortens its animation length without snapping it directly to the destination.
+        // 缩短前缘角点的收敛时间，保留连续运动。
         useLeadingBoost: true,
         leadingBoostFactor: 0.045,
         leadingBoostThreshold: 0.45,
@@ -52,8 +46,7 @@
     let manager = null;
     let startTimer = 0;
 
-    // Register a placeholder immediately. Waiting for DOM readiness would allow a second
-    // pre-body injection to create two startup chains and two animation loops.
+    // 立即注册实例占位，避免 DOM 就绪前重复注入产生多个渲染循环。
     window[GLOBAL_KEY] = {
         dispose() {
             clearTimeout(startTimer);
@@ -92,7 +85,7 @@
         const color = value.trim();
         if (!color || color === "transparent") return false;
         if (/rgba?\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)/i.test(color)) return false;
-        // RGB 的最后一个分量是蓝色，只有明确的 alpha 为零才表示透明。
+        // RGB 末项为蓝色分量；仅透明度为零时视为透明。
         if (/^rgba\([^,]+,[^,]+,[^,]+,\s*0(?:\.0+)?\s*\)$/i.test(color)) return false;
         if (/^(?:rgb|hsl)a?\([^)]*\/\s*0(?:\.0+)?%?\s*\)$/i.test(color)) return false;
         return true;
@@ -107,8 +100,7 @@
         return CONFIG.fallbackColor;
     }
 
-    // Accept a previously read style object to avoid duplicate style recalculation. Read the
-    // document theme only when all direct colour candidates are unusable.
+    // 复用已读取的样式，仅在直接颜色均无效时读取主题颜色。
     function getCursorColor(style) {
         const candidates = [
             style.backgroundColor,
@@ -141,9 +133,7 @@
                 return false;
             }
 
-            // A single integration step becomes unstable when dt approaches animationLength.
-            // Subdivide longer frames so 60 Hz and high-refresh-rate displays follow comparable
-            // spring curves instead of snapping or diverging.
+            // 长帧分步积分，避免数值失稳并保持不同刷新率下的运动一致性。
             const maxStep = this.animationLength * 0.5;
             const steps = Math.min(Math.max(1, Math.ceil(dt / maxStep)), 8);
             const stepDt = dt / steps;
@@ -221,8 +211,7 @@
 
             let factor = CONFIG.rankTrailFactors[rank] || 1;
 
-            // The leading corner uses a shorter animation length but still follows the complete
-            // spring integration. DampedSpring substeps keep the result consistent across rates.
+            // 前缘角点采用较短时长，仍执行完整的分步弹簧积分。
             if (CONFIG.useLeadingBoost && leadingAlignment > CONFIG.leadingBoostThreshold) {
                 factor = CONFIG.leadingBoostFactor;
             }
@@ -296,7 +285,7 @@
         }
 
         return {
-            move(rect, nextColor, immediate = false, sourceVisual = null) {
+            move(rect, nextColor, immediate = false, sourceVisual = null, waitForTarget = false) {
                 const nextDimensions = {
                     width: rect.shape === "line"
                         ? clamp(rect.width, CONFIG.minWidth, CONFIG.maxDrawWidth)
@@ -311,31 +300,52 @@
                 color = nextColor || color;
 
                 if (sourceVisual) {
-                    // 跨编辑器时保留原光标形状，并在受限拉伸内绘制拖尾。
+                    // 跨编辑器复用四角弹簧，连续切换时保留上一帧角点。
                     dimensions = { ...sourceVisual.dimensions };
                     outline = sourceVisual.outline;
-                    corners.forEach((corner) => corner.setAt(sourceVisual.center, dimensions));
+                    corners.forEach((corner, index) => {
+                        corner.setAt(sourceVisual.center, dimensions);
+                        if (sourceVisual.points) {
+                            corner.current = { ...sourceVisual.points[index] };
+                        }
+                    });
                     initialized = true;
-                    previousCenter = sourceVisual.center;
+                    previousCenter = { ...sourceVisual.center };
                     center = nextCenter;
-                    jumped = false;
+                    jumped = true;
                     transfer = {
-                        start: { ...sourceVisual.center },
-                        end: { ...nextCenter },
-                        startDimensions: { ...sourceVisual.dimensions },
-                        endDimensions: { ...nextDimensions },
-                        startOutline: sourceVisual.outline,
+                        endDimensions: nextDimensions,
                         endOutline: nextOutline,
-                        elapsed: 0
+                        shapeChanged: dimensions.width !== nextDimensions.width ||
+                            dimensions.height !== nextDimensions.height || outline !== nextOutline,
+                        waitFrames: waitForTarget ? 1 : 0,
+                        started: false,
+                        interrupted: Boolean(sourceVisual.points)
                     };
+                    // 从源角点向目标尺寸收敛，避免过渡结束时尺寸突变。
+                    dimensions = nextDimensions;
+                    outline = nextOutline;
                     return;
                 }
 
                 if (transfer && !immediate) {
+                    if (center.x === nextCenter.x && center.y === nextCenter.y &&
+                        dimensions.width === nextDimensions.width && dimensions.height === nextDimensions.height &&
+                        outline === nextOutline) return;
+                    // 尚未起跳时保留源位置，避免将目标旧行作为中间起点。
+                    if (transfer.started) {
+                        previousCenter = {
+                            x: corners.reduce((sum, corner) => sum + corner.current.x, 0) / corners.length,
+                            y: corners.reduce((sum, corner) => sum + corner.current.y, 0) / corners.length
+                        };
+                    }
+                    transfer.waitFrames = 0;
                     center = nextCenter;
-                    transfer.end = { ...nextCenter };
-                    transfer.endDimensions = { ...nextDimensions };
+                    dimensions = nextDimensions;
+                    outline = nextOutline;
+                    transfer.endDimensions = nextDimensions;
                     transfer.endOutline = nextOutline;
+                    jumped = true;
                     return;
                 }
 
@@ -358,10 +368,22 @@
                 return Boolean(transfer);
             },
 
-            // Reset the clock after an idle suspension so the first resumed frame does not include
-            // the entire idle period in its delta time.
-            resetClock() {
-                lastTime = performance.now();
+            getTransferVisual() {
+                if (!transfer) return null;
+                return {
+                    center: {
+                        x: corners.reduce((sum, corner) => sum + corner.current.x, 0) / corners.length,
+                        y: corners.reduce((sum, corner) => sum + corner.current.y, 0) / corners.length
+                    },
+                    points: corners.map((corner) => ({ ...corner.current })),
+                    dimensions: { ...dimensions },
+                    outline
+                };
+            },
+
+            // 恢复渲染时重置时钟，避免将空闲时长计入首帧。
+            resetClock(time = performance.now()) {
+                lastTime = time;
             },
 
             draw(context, immediate) {
@@ -371,57 +393,16 @@
                 const dt = Math.min((now - lastTime) / 1000, 1 / 30);
                 lastTime = now;
 
-                let transferAnimating = false;
-                let transferFrame = false;
-                if (transfer) {
-                    transfer.elapsed += dt;
-                    const progress = clamp(transfer.elapsed / CONFIG.animationLength, 0, 1);
-                    const eased = progress * progress * (3 - 2 * progress);
-                    const transferCenter = {
-                        x: transfer.start.x + (transfer.end.x - transfer.start.x) * eased,
-                        y: transfer.start.y + (transfer.end.y - transfer.start.y) * eased
-                    };
-                    dimensions = {
-                        width: transfer.startDimensions.width +
-                            (transfer.endDimensions.width - transfer.startDimensions.width) * eased,
-                        height: transfer.startDimensions.height +
-                            (transfer.endDimensions.height - transfer.startDimensions.height) * eased
-                    };
-                    outline = eased < 0.5 ? transfer.startOutline : transfer.endOutline;
-                    corners.forEach((corner) => corner.setAt(transferCenter, dimensions));
-                    const direction = normalize({
-                        x: transfer.end.x - transfer.start.x,
-                        y: transfer.end.y - transfer.start.y
-                    });
-                    const trailLength = Math.max(dimensions.width, dimensions.height) * 5 *
-                        Math.sin(Math.PI * progress);
-                    const rankedCorners = corners
-                        .map((corner, index) => ({
-                            corner,
-                            index,
-                            alignment:
-                                corner.relativePoint.x * direction.x +
-                                corner.relativePoint.y * direction.y
-                        }))
-                        .sort((a, b) => a.alignment - b.alignment || a.index - b.index);
-                    const longestTrail = Math.max(...CONFIG.rankTrailFactors);
-                    rankedCorners.forEach(({ corner }, rank) => {
-                        // 沿用普通拖尾的四角快慢层次，避免跨屏时只像矩形平移。
-                        const weight = (CONFIG.rankTrailFactors[rank] || 0) / longestTrail;
-                        corner.current.x -= direction.x * trailLength * weight;
-                        corner.current.y -= direction.y * trailLength * weight;
-                    });
-                    transferFrame = true;
-                    transferAnimating = progress < 1;
-                    if (!transferAnimating) {
-                        center = { ...transfer.end };
-                        dimensions = { ...transfer.endDimensions };
-                        outline = transfer.endOutline;
-                        transfer = null;
-                    }
+                // 滚动时直接同步目标位置，其余移动使用弹簧积分。
+                if (transfer && immediate) {
+                    dimensions = { ...transfer.endDimensions };
+                    outline = transfer.endOutline;
                 }
 
-                if (!transferFrame && jumped) {
+                const waiting = transfer && transfer.waitFrames > 0 && !immediate;
+                if (waiting) transfer.waitFrames -= 1;
+
+                if (jumped && !waiting) {
                     const movement = previousCenter
                         ? { x: center.x - previousCenter.x, y: center.y - previousCenter.y }
                         : { x: 0, y: 0 };
@@ -429,13 +410,27 @@
                     jumped = false;
                 }
 
-                let animating = transferAnimating;
-                if (!transferFrame) {
+                let animating = false;
+                if (waiting || (transfer && dt === 0 && !immediate)) {
+                    // 时间未推进时保留交接帧，避免浮点偏移。
+                    animating = true;
+                } else {
+                    if (transfer) transfer.started = true;
                     corners.forEach((corner) => {
                         if (corner.update(center, dimensions, dt, immediate)) {
                             animating = true;
                         }
                     });
+                }
+                if (transfer && !animating) {
+                    const shapeChanged = dimensions.width !== transfer.endDimensions.width ||
+                        dimensions.height !== transfer.endDimensions.height || outline !== transfer.endOutline;
+                    dimensions = { ...transfer.endDimensions };
+                    outline = transfer.endOutline;
+                    if (shapeChanged || transfer.shapeChanged || transfer.interrupted) {
+                        corners.forEach((corner) => corner.setAt(center, dimensions));
+                    }
+                    transfer = null;
                 }
 
                 context.save();
@@ -473,6 +468,9 @@
             this.cursors = new Map();
             this.focusedEditor = null;
             this.focusedVisual = null;
+            this.focusScanPending = false;
+            this.pointerFocus = null;
+            this.lastFrameAt = performance.now();
             this.paused = true;
             this.disposed = false;
             this.windowFocused = document.hasFocus();
@@ -498,7 +496,19 @@
 
             this.onResize = this.resize.bind(this);
             this.onScroll = this.markScrolling.bind(this);
-            this.onUserInput = this.requestFrame.bind(this);
+            this.onUserInput = (event) => {
+                if (event?.type === "mousedown") {
+                    const editor = event.target?.closest?.(".monaco-editor");
+                    this.pointerFocus = event.button === 0 && editor && editor !== this.focusedEditor
+                        ? { editor, at: performance.now() } : null;
+                }
+                this.requestFrame();
+            };
+            this.onEditorFocus = () => {
+                if (this.paused || this.disposed) return;
+                this.focusScanPending = true;
+                this.requestFrame();
+            };
             this.onActivityChange = this.updateActivity.bind(this);
             this.onFocus = () => {
                 this.windowFocused = true;
@@ -512,8 +522,7 @@
         }
 
         start() {
-            // If the environment cannot provide a 2D context, leave the native caret untouched
-            // and avoid installing styles or listeners.
+            // 无法创建二维画布时保留原生光标，不注入样式或监听器。
             if (!this.context) return false;
 
             this.style.textContent = `
@@ -542,14 +551,15 @@
             window.addEventListener("focus", this.onFocus);
             window.addEventListener("blur", this.onBlur);
             document.addEventListener("visibilitychange", this.onActivityChange);
+            document.addEventListener("focusin", this.onEditorFocus);
+            document.addEventListener("focusout", this.onEditorFocus);
             this.reducedMotion?.addEventListener("change", this.onActivityChange);
             document.addEventListener("scroll", this.onScroll, {
                 capture: true,
                 passive: true
             });
 
-            // Wake the suspended animation loop immediately after direct user input. Periodic
-            // geometry comparison remains the fallback for movement caused by other sources.
+            // 输入事件立即唤醒渲染，定期扫描补充检测其他位置变化。
             document.addEventListener("keydown", this.onUserInput, {
                 capture: true,
                 passive: true
@@ -589,10 +599,12 @@
                 this.canvas.style.opacity = "0";
                 this.context.clearRect(0, 0, this.viewportWidth, this.viewportHeight);
                 this.cursors.forEach((_, cursor) => cursor.classList.remove(HIDDEN_CLASS));
-                // 丢弃旧坐标，恢复时从各光标的新位置开始，不补播后台移动。
+                // 暂停时清除旧坐标，恢复后不重播后台移动。
                 this.cursors.clear();
                 this.focusedEditor = null;
                 this.focusedVisual = null;
+                this.focusScanPending = false;
+                this.pointerFocus = null;
             } else {
                 this.resize();
                 this.scan();
@@ -601,15 +613,15 @@
             }
         }
 
-        // Wake the loop after an idle suspension and extend its active window on every input,
-        // including when a frame is already scheduled.
+        // 每次输入均延长渲染活跃期，避免提前进入空闲状态。
         requestFrame() {
             if (this.paused || this.disposed) return;
             this.keepAliveUntil = performance.now() + CONFIG.idleGraceMs;
 
             if (this.animationFrame) return;
 
-            this.cursors.forEach((data) => data.instance.resetClock());
+            this.lastFrameAt = performance.now();
+            this.cursors.forEach((data) => data.instance.resetClock(this.lastFrameAt));
             this.animationFrame = requestAnimationFrame(this.loop);
         }
 
@@ -643,16 +655,20 @@
             this.requestFrame();
         }
 
-        // Read only geometry on each frame. Style-dependent checks run at scan frequency in
-        // readCursorStyle to avoid forcing a complete style recalculation every frame.
+        // 逐帧读取几何；样式由扫描更新，减少每帧样式计算。
         readCursorRect(cursor) {
             const rect = cursor.getBoundingClientRect();
             if (rect.width <= 0 || rect.height <= 0) return null;
 
-            // 读取 Monaco 的形状类，不根据宽高猜测，也不读取光标下的字符。
+            // 根据 Monaco 类名识别光标形状，不读取字符。
             const classes = cursor.closest(".cursors-layer")?.classList;
-            const shape = ["block-outline", "block", "underline-thin", "underline", "line-thin"]
+            let shape = ["block-outline", "block", "underline-thin", "underline", "line-thin"]
                 .find((name) => classes?.contains(`cursor-${name}-style`)) || "line";
+            // 扩展搜索框使用原生细光标尺寸，不读取搜索文字。
+            if (shape === "line" && cursor.closest(".monaco-editor")
+                ?.closest(".extensions-viewlet .suggest-input-container")) {
+                shape = "line-thin";
+            }
             const height = shape === "underline-thin" ? Math.min(rect.height, 1) : rect.height;
             const inset = shape === "block-outline" ? Math.min(0.5, rect.width / 2, height / 2) : 0;
 
@@ -665,15 +681,13 @@
             };
         }
 
-        // This is the only per-caret getComputedStyle read and runs once per scan interval.
+        // 集中读取光标样式，由定期扫描或焦点事件触发。
         readCursorStyle(cursor) {
             const style = getComputedStyle(cursor);
 
             return {
                 color: getCursorColor(style),
-                // VS Code hides inactive carets by transforming them outside the viewport. This
-                // string check depends on that implementation detail; failure only draws an extra
-                // caret and does not interrupt the script.
+                // 排除通过变换移出视口的光标；此判定依赖 VS Code 内部实现。
                 styleVisible:
                     style.display !== "none" &&
                     style.visibility !== "hidden" &&
@@ -690,6 +704,16 @@
             );
         }
 
+        isEditorFocused(editor) {
+            if (!editor) return false;
+            // 精简编辑器可能缺少 focused 类，优先使用实际输入焦点。
+            const activeEditor = document.activeElement?.closest?.(".monaco-editor");
+            if (activeEditor) return activeEditor === editor;
+            return Boolean(editor.classList?.contains("focused") || editor
+                .closest(".extensions-viewlet .suggest-input-container")
+                ?.classList.contains("synthetic-focus"));
+        }
+
         scan() {
             if (this.paused || this.disposed) return;
             const liveElements = new Set();
@@ -702,11 +726,10 @@
                 const styleState = this.readCursorStyle(cursor);
                 const existing = this.cursors.get(cursor);
                 const editor = cursor.closest(".monaco-editor");
-                const editorFocused = editor?.classList?.contains("focused");
+                const editorFocused = this.isEditorFocused(editor);
 
                 if (existing) {
-                    // A caret can become visible without moving. Wake the loop explicitly because
-                    // the geometry comparison below would not detect that transition.
+                    // 可见性或颜色变化也需唤醒渲染，不能仅比较坐标。
                     if (existing.styleVisible !== styleState.styleVisible ||
                         existing.color !== styleState.color) {
                         existing.styleDirty = true;
@@ -726,6 +749,7 @@
                 if (!rect) return;
 
                 const instance = createAnimatedCursor();
+                if (this.animationFrame) instance.resetClock(this.lastFrameAt);
                 instance.move(rect, styleState.color);
 
                 this.cursors.set(cursor, {
@@ -749,8 +773,7 @@
                     return;
                 }
 
-                // While rAF is suspended, geometry comparison detects movement caused by
-                // extensions or formatting. Avoid the duplicate layout read while rAF is active.
+                // 空闲时扫描几何变化，渲染期间避免重复读取布局。
                 if (this.animationFrame) return;
 
                 const rect = this.readCursorRect(cursor);
@@ -788,6 +811,12 @@
                 this.animationFrame = 0;
                 return;
             }
+            // 焦点变化后在下一帧扫描，避免等待轮询。
+            if (this.focusScanPending) {
+                this.focusScanPending = false;
+                this.scan();
+            }
+            this.lastFrameAt = performance.now();
             this.context.setTransform(
                 this.devicePixelRatio,
                 0,
@@ -821,7 +850,7 @@
 
                 const moved = rectChanged(data.lastRect, rect);
                 const editor = cursor.closest(".monaco-editor");
-                const editorFocused = editor?.classList?.contains("focused");
+                const editorFocused = this.isEditorFocused(editor);
                 const transferSource = editorFocused && this.focusedEditor &&
                     editor !== this.focusedEditor && this.focusedVisual && !focusTransferUsed
                     ? this.focusedVisual
@@ -830,10 +859,18 @@
                     data.lastRect?.shape !== rect.shape;
 
                 if (transferSource) {
-                    // 只有真正的编辑器焦点切换才跨分屏过渡，新增多光标不借用该起点。
-                    data.instance.move(rect, data.color, false, transferSource);
+                    // 仅跨编辑器焦点切换继承源位置，新增次要光标独立初始化。
+                    // 点击后目标几何尚未更新时等待一帧，避免途经旧行。
+                    const waitForTarget = !moved && this.pointerFocus?.editor === editor &&
+                        performance.now() - this.pointerFocus.at <= CONFIG.idleGraceMs;
+                    data.instance.move(rect, data.color, false, transferSource, waitForTarget);
+                    this.pointerFocus = null;
                     data.active = true;
                     focusTransferUsed = true;
+                } else if (!editorFocused && data.instance.isTransferring()) {
+                    // 取消失焦编辑器的过渡，避免残留拖尾。
+                    data.instance.move(rect, data.color, true);
+                    data.active = true;
                 } else if (reset && !data.instance.isTransferring()) {
                     data.instance.move(rect, data.color, true);
                     data.active = true;
@@ -864,6 +901,10 @@
                 if (data.instance.draw(this.context, this.isScrolling)) {
                     anyAnimating = true;
                 }
+                if (editorFocused && nextFocusedEditor === editor) {
+                    // 记录本帧过渡位置，供连续切换接续。
+                    nextFocusedVisual = data.instance.getTransferVisual() || nextFocusedVisual;
+                }
             });
 
             if (nextFocusedEditor) {
@@ -892,8 +933,7 @@
                 });
             }
 
-            // Suspend the loop while idle. The last canvas frame is transparent and is cleared
-            // before the next visible frame, so it cannot reappear as a stale trail.
+            // 空闲时暂停渲染；下次绘制前清空画布，避免残留拖尾。
             if (
                 anyAnimating ||
                 this.canvasVisible ||
@@ -917,6 +957,8 @@
             window.removeEventListener("focus", this.onFocus);
             window.removeEventListener("blur", this.onBlur);
             document.removeEventListener("visibilitychange", this.onActivityChange);
+            document.removeEventListener("focusin", this.onEditorFocus);
+            document.removeEventListener("focusout", this.onEditorFocus);
             this.reducedMotion?.removeEventListener("change", this.onActivityChange);
             document.removeEventListener("scroll", this.onScroll, { capture: true });
             document.removeEventListener("keydown", this.onUserInput, { capture: true });

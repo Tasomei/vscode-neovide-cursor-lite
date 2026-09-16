@@ -68,13 +68,13 @@ Edit the `CONFIG` object at the top of [`cursor-trail.js`](./cursor-trail.js), t
 | Option | Default | Description |
 | --- | ---: | --- |
 | `opacity` | `0.88` | Animated cursor opacity |
-| `holdMs` | `170` | Delay before fade-out |
-| `fadeMs` | `180` | Fade-out duration |
-| `animationLength` | `0.16` | Duration of longer movements |
-| `shortAnimationLength` | `0.065` | Duration of short movements |
-| `maxDrawWidth` | `4` | Maximum regular line-cursor trail width |
+| `holdMs` | `170` | Delay before fade-out (ms) |
+| `fadeMs` | `180` | Fade-out duration (ms) |
+| `animationLength` | `0.16` | Base spring time for longer movements (s) |
+| `shortAnimationLength` | `0.065` | Base spring time for short movements (s) |
+| `maxDrawWidth` | `4` | Maximum regular line-cursor width before deformation (px) |
 | `maxDevicePixelRatio` | `2` | Canvas pixel-ratio limit |
-| `idleGraceMs` | `250` | Minimum active time after input |
+| `idleGraceMs` | `250` | Minimum active time after input (ms) |
 | `respectReducedMotion` | `true` | Use the native caret when reduced motion is requested |
 | `pauseWhenWindowBlurred` | `true` | Pause while the window is unfocused |
 | `useShadow` | `false` | Enable an optional glow |
@@ -84,6 +84,12 @@ Edit the `CONFIG` object at the top of [`cursor-trail.js`](./cursor-trail.js), t
 Supported styles are `line`, `line-thin`, `block`, `block-outline`, `underline` and
 `underline-thin`. Shapes are read from Monaco's rendered caret, so changes made by Vim extensions
 do not require separate configuration.
+
+Transitions also cover the Monaco-based Extensions search box, using its rendered caret geometry
+without reading search text. Ordinary HTML inputs and password fields are not supported.
+
+Rendering and scanning stop while the window is hidden. On resume, the animation starts at the
+current caret position without replaying background movement.
 
 ## Compatibility
 
@@ -99,7 +105,7 @@ enabled again or may change the internal DOM used by the animation.
 
 ## Privacy
 
-The runtime reads only rendered caret geometry, visibility and colour. It does not read typed text,
+The runtime reads caret geometry, styles and interface activity state. It does not read typed text,
 make network requests, access cookies, storage or the clipboard, execute system commands, or persist
 data. See [SECURITY.md](./SECURITY.md) for reporting instructions.
 

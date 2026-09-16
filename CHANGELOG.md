@@ -4,14 +4,28 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-16
+
 ### Added
 
 - Regression coverage for invalid versions, incomplete release entries and unexpected assets.
+- Regression coverage for interrupted split transitions at 60, 120 and 144 Hz, scrolling and delayed shape changes.
+- Bidirectional transitions between the Extensions search editor and code editors without reading search text.
+
+### Fixed
+
+- Use the same four-corner spring motion for same-editor and cross-editor jumps instead of translating a short trail.
+- Cancel stale cross-editor trails when focus changes during a transition and continue from the current transition position.
+- Synchronize cross-editor transitions immediately when scrolling.
+- Refresh caret discovery and visibility on the frame after a focus change instead of waiting for the periodic scan.
+- Converge to the destination caret size during transitions and preserve spring motion on colour-only updates.
+- Give unchanged destination geometry one render frame to update after a cross-editor mouse click, avoiding a jump through the stale row.
 
 ### Changed
 
 - Validate semantic versions and dated CHANGELOG entries before writing release assets.
 - Derive publishing-guide versions, tags and asset paths from repository state.
+- Translate source comments into concise Chinese and clarify configuration units and supported input controls in both READMEs.
 
 ## [0.2.0] - 2026-09-05
 
@@ -81,7 +95,8 @@ The runtime animation and its default feel are unchanged in this release.
 - Automatic cleanup when the script is injected again.
 - Single-file distribution with no build step or runtime dependency.
 
-[Unreleased]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.0...v0.1.1

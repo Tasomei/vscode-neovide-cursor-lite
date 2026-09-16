@@ -48,9 +48,9 @@ function createHarness(options = {}) {
         store.get(type)?.delete(callback);
     }
 
-    function emit(store, type) {
+    function emit(store, type, details = {}) {
         for (const callback of [...(store.get(type) || [])]) {
-            callback({ type });
+            callback({ type, ...details });
         }
     }
 
@@ -137,6 +137,7 @@ function createHarness(options = {}) {
         closest(selector) {
             if (selector === ".cursors-layer") return this.layer;
             if (selector === ".monaco-editor") return this.editor;
+            if (selector === ".extensions-viewlet .suggest-input-container") return this.searchContainer;
             throw new Error(`Unexpected selector: ${selector}`);
         }
 
@@ -182,6 +183,7 @@ function createHarness(options = {}) {
         head,
         body,
         documentElement,
+        activeElement: null,
         hidden: options.hidden ?? false,
         hasFocus() { return focused; },
         createElement(tagName) {
@@ -316,8 +318,8 @@ function createHarness(options = {}) {
         },
         runFrame,
         drainFrames,
-        emitDocument(type) {
-            emit(documentListeners, type);
+        emitDocument(type, details) {
+            emit(documentListeners, type, details);
         },
         tickIntervals() {
             for (const timer of [...intervals.values()]) timer.callback();
@@ -595,7 +597,7 @@ test("isolates new split/diff carets, multicursor additions and removed carets",
     const harness = createHarness();
     harness.inject();
     harness.drainFrames();
-    for (const editor of [{}, harness.cursor.editor]) {
+    for (const editor of [harness.document.createElement("div"), harness.cursor.editor]) {
         const next = harness.addCursor({ left: 500, top: 80, width: 6, height: 18 }, editor);
         harness.tickIntervals();
         harness.runFrame();
@@ -638,8 +640,6 @@ test("animates between focused split editors without seeding unrelated carets", 
         "the focused caret should start from the previous editor");
     assert.ok(transitionBounds.width > 6,
         "the split transition should retain a visible trail");
-    assert.ok(transitionBounds.width <= 120,
-        "the split transition trail should remain bounded instead of becoming a screen-wide band");
     const transitionPoints = harness.drawings[harness.drawings.length - 1].points;
     assert.ok(new Set(transitionPoints.map((point) => Math.round(point.x))).size >= 3,
         "the split transition should deform its corners instead of translating a rectangle");
@@ -700,7 +700,7 @@ test("resynchronizes a hidden or reparented editor caret without a cross-editor 
     harness.tickIntervals();
     harness.runFrame();
     assert.equal(bounds(harness.drawings[0]).left, 450);
-    harness.cursor.editor = {};
+    harness.cursor.editor = harness.document.createElement("div");
     harness.cursor.rect.left = 100;
     harness.runFrame();
     assert.equal(bounds(harness.drawings[0]).left, 100);
@@ -731,6 +731,283 @@ test("allows opting out of reduced motion and blur suspension while still pausin
     harness.setHidden(false);
     assert.equal(harness.intervalCount, 1);
     harness.window[GLOBAL_KEY].dispose();
+});
+
+for (const hz of [60, 120, 144]) {
+    for (const shape of ["line", "block", "block-outline"]) {
+        test(`split and same-editor ${shape} jumps have identical spring trajectories at ${hz} Hz`, (context) => {
+            const local = createHarness();
+            const split = createHarness();
+            context.after(() => {
+                local.window[GLOBAL_KEY]?.dispose();
+                split.window[GLOBAL_KEY]?.dispose();
+            });
+            for (const h of [local, split]) {
+                h.setShape(shape);
+                h.cursor.rect.width = 12;
+            }
+            const target = split.addCursor(
+                { left: 500, top: 230, width: 12, height: 18 },
+                split.document.createElement("div")
+            );
+            split.setShape(shape, target);
+            local.inject();
+            split.inject();
+            local.drainFrames();
+            split.drainFrames();
+            local.cursor.rect.left = target.rect.left;
+            local.cursor.rect.top = target.rect.top;
+            split.cursor.editor.classList.remove("focused");
+            target.editor.classList.add("focused");
+            local.emitDocument("mousedown");
+            split.emitDocument("mousedown");
+            for (let frame = 0; frame < 180; frame++) {
+                local.runFrame(1000 / hz);
+                split.runFrame(1000 / hz);
+                assert.deepEqual(split.drawings[1], local.drawings[0], `frame ${frame}`);
+                assert.equal(split.pendingAnimationFrames, local.pendingAnimationFrames);
+            }
+        });
+    }
+}
+
+function createSplitHarness(context) {
+    const harness = createHarness();
+    context.after(() => harness.window[GLOBAL_KEY]?.dispose());
+    const carets = [harness.cursor];
+    for (const left of [500, 650]) {
+        carets.push(harness.addCursor(
+            { left, top: 30, width: 6, height: 18 },
+            harness.document.createElement("div")
+        ));
+    }
+    harness.inject();
+    harness.drainFrames();
+    return {
+        harness, carets,
+        focus(index) {
+            carets.forEach((caret) => caret.editor.classList.remove("focused"));
+            carets[index].editor.classList.add("focused");
+            harness.emitDocument("mousedown");
+        }
+    };
+}
+
+for (const hz of [60, 120, 144]) {
+    for (const destination of [0, 2]) {
+        test(`retargets an interrupted split transition to editor ${destination} at ${hz} Hz`, (context) => {
+            const { harness, carets, focus } = createSplitHarness(context);
+            focus(1);
+            for (let frame = 0; frame < 3; frame++) harness.runFrame(1000 / hz);
+            const before = harness.drawings[1].points.map((point) => ({ ...point }));
+            focus(destination);
+            harness.runFrame(0);
+            assert.deepEqual(bounds(harness.drawings[1]), {
+                left: 500, top: 30, width: 4, height: 18
+            }, "the previous editor must stop its in-flight trail");
+            assert.deepEqual(harness.drawings[destination].points, before,
+                "retargeting must preserve the exact visible corners at the handoff");
+            harness.drainFrames();
+            assert.deepEqual(bounds(harness.drawings[destination]), {
+                left: carets[destination].rect.left, top: 30, width: 4, height: 18
+            });
+            assert.equal(harness.pendingAnimationFrames, 0);
+            carets.forEach((caret) => assert.equal(caret.classList.contains(HIDDEN_CLASS), false));
+        });
+    }
+}
+
+test("scrolling interrupts a split transition at the current target geometry", (context) => {
+    const { harness, carets, focus } = createSplitHarness(context);
+    focus(1);
+    harness.runFrame();
+    carets[1].rect.top = 120;
+    harness.emitDocument("scroll");
+    harness.runFrame();
+    assert.deepEqual(bounds(harness.drawings[1]), {
+        left: 500, top: 120, width: 4, height: 18
+    });
+    harness.drainFrames();
+    assert.equal(harness.timeoutCount, 0);
+});
+
+test("a retargeted split transition settles on a delayed block shape", (context) => {
+    const { harness, carets, focus } = createSplitHarness(context);
+    focus(1);
+    harness.runFrame();
+    focus(2);
+    harness.runFrame();
+    harness.setShape("block", carets[2]);
+    carets[2].rect.width = 12;
+    harness.runFrame();
+    harness.drainFrames();
+    assert.deepEqual(bounds(harness.drawings[2]), {
+        left: 650, top: 30, width: 12, height: 18
+    });
+});
+
+test("focus changes refresh cached hidden carets on the next frame without a scan tick", (context) => {
+    const { harness, carets, focus } = createSplitHarness(context);
+    carets[1].computedStyle.visibility = "hidden";
+    harness.tickIntervals();
+    harness.drainFrames();
+    focus(1);
+    carets[1].computedStyle.visibility = "visible";
+    harness.emitDocument("focusin");
+    harness.runFrame();
+    assert.equal(carets[1].classList.contains(HIDDEN_CLASS), true);
+    assert.equal(harness.drawings.length, 3);
+});
+
+test("new extension-search Monaco carets animate in both directions on focus without reading text", (context) => {
+    const harness = createHarness();
+    context.after(() => harness.window[GLOBAL_KEY]?.dispose());
+    harness.inject();
+    harness.drainFrames();
+    const searchEditor = harness.document.createElement("div");
+    searchEditor.searchContainer = harness.document.createElement("div");
+    const search = harness.addCursor({ left: 400, top: 10, width: 1, height: 20 }, searchEditor);
+    const searchInput = harness.document.createElement("textarea");
+    searchInput.editor = searchEditor;
+    for (const name of ["value", "textContent", "selectionStart"]) {
+        Object.defineProperty(searchInput, name, { get() { throw new Error("must not read search text"); } });
+    }
+    // 精简编辑器可能只有容器焦点标记，旧代码编辑器的类名还未来得及更新。
+    searchEditor.searchContainer.classList.add("synthetic-focus");
+    harness.document.activeElement = searchInput;
+    harness.emitDocument("focusin");
+    assert.equal(harness.pendingAnimationFrames, 1);
+    harness.runFrame();
+    assert.equal(search.classList.contains(HIDDEN_CLASS), true);
+    assert.ok(bounds(harness.drawings[1]).left < 400);
+    harness.drainFrames();
+    assert.equal(bounds(harness.drawings[1]).width, 1, "the search caret retains its native thin width");
+    const editorInput = harness.document.createElement("textarea");
+    editorInput.editor = harness.cursor.editor;
+    harness.document.activeElement = editorInput;
+    searchEditor.searchContainer.classList.remove("synthetic-focus");
+    harness.emitDocument("focusin");
+    harness.runFrame();
+    assert.equal(harness.cursor.classList.contains(HIDDEN_CLASS), true);
+    assert.ok(bounds(harness.drawings[0]).width > 4);
+    harness.drainFrames();
+    harness.window[GLOBAL_KEY].dispose();
+    assert.equal(harness.listenerCount("document", "focusin"), 0);
+    assert.equal(harness.listenerCount("document", "focusout"), 0);
+});
+
+test("block to extension-search transitions converge to the thin shape before settling", (context) => {
+    const { harness, carets, focus } = createSplitHarness(context);
+    harness.setShape("block");
+    harness.cursor.rect.width = 12;
+    harness.tickIntervals();
+    harness.drainFrames();
+    const target = carets[1];
+    target.editor.searchContainer = harness.document.createElement("div");
+    Object.assign(target.rect, { left: 20, top: 300, width: 1, height: 18 });
+    focus(1);
+    harness.emitDocument("focusin");
+    harness.runFrame();
+    const firstWidth = bounds(harness.drawings[1]).width;
+    assert.ok(firstWidth > 1 && firstWidth < 12);
+    for (let frame = 0; frame < 4; frame++) harness.runFrame();
+    assert.ok(bounds(harness.drawings[1]).width < firstWidth,
+        "the width must converge during the flight, not snap only at the end");
+    harness.drainFrames();
+    assert.equal(bounds(harness.drawings[1]).width, 1);
+});
+
+test("a colour refresh does not restart a cross-editor spring", (context) => {
+    const a = createSplitHarness(context);
+    const b = createSplitHarness(context);
+    for (const item of [a, b]) {
+        item.focus(1);
+        for (let frame = 0; frame < 3; frame++) item.harness.runFrame();
+    }
+    b.carets[1].computedStyle.backgroundColor = "rgb(255, 0, 0)";
+    a.harness.tickIntervals();
+    b.harness.tickIntervals();
+    for (let frame = 0; frame < 30; frame++) {
+        a.harness.runFrame();
+        b.harness.runFrame();
+        assert.deepEqual(a.harness.drawings[1].points, b.harness.drawings[1].points);
+    }
+    assert.equal(b.harness.drawings[1].color, "rgb(255, 0, 0)");
+});
+
+test("focus events remain suspended and are cleaned up after reinjection", () => {
+    const harness = createHarness();
+    harness.inject();
+    harness.inject();
+    for (const event of ["focusin", "focusout"]) {
+        assert.equal(harness.listenerCount("document", event), 1);
+    }
+    harness.setHidden(true);
+    harness.emitDocument("focusin");
+    harness.emitDocument("focusout");
+    assert.equal(harness.pendingAnimationFrames, 0);
+    assert.equal(harness.intervalCount, 0);
+    harness.window[GLOBAL_KEY].dispose();
+    for (const event of ["focusin", "focusout"]) {
+        assert.equal(harness.listenerCount("document", event), 0);
+    }
+});
+
+for (const hz of [60, 120, 144]) {
+    test(`a cross-editor click waits for a delayed target row instead of flying through the old row at ${hz} Hz`, (context) => {
+        const { harness, carets } = createSplitHarness(context);
+        const direct = createHarness();
+        context.after(() => direct.window[GLOBAL_KEY]?.dispose());
+        direct.inject();
+        direct.drainFrames();
+        const sourcePoints = harness.drawings[0].points.map(p => ({ ...p }));
+        harness.emitDocument("mousedown", { target: carets[1], button: 0 });
+        carets[0].editor.classList.remove("focused");
+        carets[1].editor.classList.add("focused");
+        harness.emitDocument("focusin");
+        harness.runFrame(1000 / hz);
+        assert.deepEqual(harness.drawings[1].points, sourcePoints,
+            "the stale destination row must not produce a horizontal intermediate flight");
+        direct.runFrame(1000 / hz);
+        carets[1].rect.top = 300;
+        direct.cursor.rect.left = carets[1].rect.left;
+        direct.cursor.rect.top = carets[1].rect.top;
+        direct.emitDocument("mousedown");
+        for (let frame = 0; frame < 100; frame++) {
+            harness.runFrame(1000 / hz);
+            direct.runFrame(1000 / hz);
+            assert.deepEqual(harness.drawings[1].points, direct.drawings[0].points,
+                `frame ${frame} must match a direct jump to the final row`);
+        }
+    });
+}
+
+test("a cross-editor click with an already updated target starts immediately", (context) => {
+    const { harness, carets } = createSplitHarness(context);
+    const source = harness.drawings[0].points.map(p => ({ ...p }));
+    harness.emitDocument("mousedown", { target: carets[1], button: 0 });
+    carets[0].editor.classList.remove("focused");
+    carets[1].editor.classList.add("focused");
+    carets[1].rect.top = 300;
+    harness.emitDocument("focusin");
+    harness.runFrame();
+    assert.notDeepEqual(harness.drawings[1].points, source);
+    assert.ok(bounds(harness.drawings[1]).top > 30);
+});
+
+test("clicking an unchanged target position waits at most one frame", (context) => {
+    const { harness, carets } = createSplitHarness(context);
+    const source = harness.drawings[0].points.map(p => ({ ...p }));
+    harness.emitDocument("mousedown", { target: carets[1], button: 0 });
+    carets[0].editor.classList.remove("focused");
+    carets[1].editor.classList.add("focused");
+    harness.emitDocument("focusin");
+    harness.runFrame();
+    assert.deepEqual(harness.drawings[1].points, source);
+    harness.runFrame();
+    assert.notDeepEqual(harness.drawings[1].points, source);
+    harness.drainFrames();
+    assert.equal(harness.pendingAnimationFrames, 0);
 });
 
 test("rejects transparent alpha without discarding an opaque RGB zero component", () => {

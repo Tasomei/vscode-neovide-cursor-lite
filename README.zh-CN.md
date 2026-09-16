@@ -13,9 +13,9 @@
 - 基于弹簧模型的四角动画与受限长度弹性拖尾
 - 原生支持 VS Code 的六种光标样式
 - 支持普通、分屏和 Diff 编辑器之间的平滑过渡
-- 正确处理多光标和 Vim 风格的形状切换
+- 支持多光标与 Vim 风格的形状切换
 - 自动继承主题颜色，支持减少动态效果和空闲暂停
-- 单个可审查的 JavaScript 文件，无运行时依赖、遥测或存储
+- 单个可审查的 JavaScript 文件，无运行时依赖、遥测或持久化存储
 
 ## 安装
 
@@ -67,13 +67,13 @@ Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
 | 选项 | 默认值 | 说明 |
 | --- | ---: | --- |
 | `opacity` | `0.88` | 动画光标不透明度 |
-| `holdMs` | `170` | 开始淡出前的延迟 |
-| `fadeMs` | `180` | 淡出持续时间 |
-| `animationLength` | `0.16` | 较长距离移动的动画时长 |
-| `shortAnimationLength` | `0.065` | 短距离移动的动画时长 |
-| `maxDrawWidth` | `4` | 普通线状光标拖尾的最大宽度 |
+| `holdMs` | `170` | 淡出前延迟（毫秒） |
+| `fadeMs` | `180` | 淡出时长（毫秒） |
+| `animationLength` | `0.16` | 长距离移动的弹簧基础时长（秒） |
+| `shortAnimationLength` | `0.065` | 短距离移动的弹簧基础时长（秒） |
+| `maxDrawWidth` | `4` | 普通线状光标形变前的最大宽度（像素） |
 | `maxDevicePixelRatio` | `2` | 画布设备像素比上限 |
-| `idleGraceMs` | `250` | 输入后保持活跃的最短时间 |
+| `idleGraceMs` | `250` | 输入后保持活跃的最短时间（毫秒） |
 | `respectReducedMotion` | `true` | 系统要求减少动态效果时使用原生光标 |
 | `pauseWhenWindowBlurred` | `true` | 窗口失焦时暂停 |
 | `useShadow` | `false` | 启用可选发光效果 |
@@ -82,6 +82,11 @@ Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
 
 支持 `line`、`line-thin`、`block`、`block-outline`、`underline` 和 `underline-thin`。脚本直接
 读取 Monaco 渲染的光标形状，因此 Vim 扩展触发的形状切换无需额外配置。
+
+过渡也支持基于 Monaco 的扩展搜索框，直接读取已渲染的光标几何信息，不读取搜索文字。
+不支持普通 HTML 输入框和密码框。
+
+窗口隐藏时暂停绘制与扫描；恢复后从光标当前位置开始，不重播后台移动。
 
 ## 兼容性
 
@@ -97,8 +102,8 @@ Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
 
 ## 隐私
 
-运行时只读取已渲染光标的位置、尺寸、可见性和颜色。它不会读取输入文字，不会发起网络请求，
-不会访问 Cookie、存储或剪贴板，不会执行系统命令，也不会持久化数据。问题报告方式见
+运行时读取光标几何、样式及界面活动状态，不读取输入文字，不发起网络请求，
+不访问 Cookie、存储或剪贴板，不执行系统命令，也不持久化数据。问题报告方式见
 [SECURITY.md](./SECURITY.md)。
 
 ## 故障排查
