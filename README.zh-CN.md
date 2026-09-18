@@ -2,129 +2,100 @@
 
 [English](./README.md) | 简体中文
 
-一款轻量、无依赖的 Visual Studio Code Neovide 风格光标动画。
+适用于 VS Code 的 Neovide 风格光标动画。单个 JavaScript 文件，无运行时依赖。
 
-[下载 `cursor-trail.js`](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/latest/download/cursor-trail.js)
-· [校验和](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/latest/download/SHA256SUMS.txt)
-· [全部版本](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases)
+[下载脚本](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/latest/download/cursor-trail.js)
+· [SHA-256](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/latest/download/SHA256SUMS.txt)
+· [版本记录](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases)
 
 ## 功能
 
-- 基于弹簧模型的四角动画与受限长度弹性拖尾
-- 原生支持 VS Code 的六种光标样式
-- 支持普通、分屏和 Diff 编辑器之间的平滑过渡
-- 支持多光标与 Vim 风格的形状切换
-- 自动继承主题颜色，支持减少动态效果和空闲暂停
-- 单个可审查的 JavaScript 文件，无运行时依赖、遥测或持久化存储
+- 四角弹簧动画，自动继承光标颜色。
+- 支持六种光标样式、多光标及 Vim 模式形状切换。
+- 支持分屏、Diff 编辑器与扩展搜索框之间的过渡。
+- 遵循减少动态效果设置；空闲停止绘制，异常时恢复原生光标。
 
 ## 安装
 
 1. 安装 [Custom CSS and JS Loader](https://marketplace.visualstudio.com/items?itemName=be5invis.vscode-custom-css)。
-2. 下载 `cursor-trail.js`，并保存到固定的本地目录。
-3. 打开 `Preferences: Open User Settings (JSON)`，添加文件 URI：
+2. 下载 `cursor-trail.js`，保存至固定的本地目录。
+3. 打开 `Preferences: Open User Settings (JSON)`，将文件 URI 加入 `vscode_custom_css.imports`：
 
    ```json
    {
      "vscode_custom_css.imports": [
-       "file:///C:/Users/your-name/vscode-neovide-cursor-lite/cursor-trail.js"
+       "file:///C:/path/to/cursor-trail.js"
      ]
    }
    ```
 
-   macOS 路径示例：`file:///Users/your-name/vscode-neovide-cursor-lite/cursor-trail.js`。
+   替换示例路径，并保留已有导入项。macOS 示例：`file:///Users/your-name/path/cursor-trail.js`。
 
 4. 从命令面板运行 `Enable Custom CSS and JS`，然后重启 VS Code。
 
-更新脚本或 VS Code 后，运行 `Reload Custom CSS and JS` 并重启编辑器。在 Windows 上，启用
-或重新加载注入时可能需要管理员权限。
+加载器需要 VS Code 安装目录的写入权限；Windows 可能需要管理员权限。
+更新脚本、配置或 VS Code 后，运行 `Reload Custom CSS and JS` 并重启。
 
-如需验证下载文件，请将以下命令的输出与 `SHA256SUMS.txt` 对比：
+在 Windows 上验证下载文件时，将以下输出与校验和文件对比：
 
 ```powershell
 Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
 ```
 
-### 可选 VS Code 设置
-
-```json
-{
-  "editor.cursorStyle": "line",
-  "editor.cursorWidth": 6,
-  "editor.cursorBlinking": "phase",
-  "workbench.colorCustomizations": {
-    "editorCursor.foreground": "#babbf1"
-  }
-}
-```
-
-如果已经存在 `workbench.colorCustomizations`，只需合并 `editorCursor.foreground`。
-
 ## 配置
 
-修改 [`cursor-trail.js`](./cursor-trail.js) 顶部的 `CONFIG` 对象，然后运行
-`Reload Custom CSS and JS`。
+动画跟随实际渲染的光标样式与颜色，包括 Vim 模式变化。
+支持样式：`line`、`line-thin`、`block`、`block-outline`、`underline`、`underline-thin`。
+
+修改 [cursor-trail.js](./cursor-trail.js) 中的 `CONFIG` 可调整下列常用选项，之后按上述步骤重新加载：
 
 | 选项 | 默认值 | 说明 |
 | --- | ---: | --- |
-| `opacity` | `0.88` | 动画光标不透明度 |
-| `holdMs` | `170` | 淡出前延迟（毫秒） |
+| `opacity` | `0.88` | 光标不透明度 |
+| `holdMs` | `170` | 淡出延迟（毫秒） |
 | `fadeMs` | `180` | 淡出时长（毫秒） |
-| `animationLength` | `0.16` | 长距离移动的弹簧基础时长（秒） |
-| `shortAnimationLength` | `0.065` | 短距离移动的弹簧基础时长（秒） |
-| `maxDrawWidth` | `4` | 普通线状光标形变前的最大宽度（像素） |
-| `maxDevicePixelRatio` | `2` | 画布设备像素比上限 |
+| `animationLength` | `0.16` | 长距离移动的弹簧时长（秒） |
+| `shortAnimationLength` | `0.065` | 短距离移动的弹簧时长（秒） |
+| `maxDrawWidth` | `4` | 普通线状光标形变前的宽度上限（像素） |
+| `maxDevicePixelRatio` | `2` | 画布像素比上限 |
 | `idleGraceMs` | `250` | 输入后保持活跃的最短时间（毫秒） |
-| `respectReducedMotion` | `true` | 系统要求减少动态效果时使用原生光标 |
+| `respectReducedMotion` | `true` | 遵循系统减少动态效果设置 |
 | `pauseWhenWindowBlurred` | `true` | 窗口失焦时暂停 |
-| `useShadow` | `false` | 启用可选发光效果 |
+| `useShadow` | `false` | 光标发光效果 |
 | `zIndex` | `100` | 覆盖层堆叠层级 |
-| `fallbackColor` | `#ca9ee6` | 无法读取主题颜色时使用的备用颜色 |
+| `fallbackColor` | `#ca9ee6` | 备用光标颜色 |
 
-支持 `line`、`line-thin`、`block`、`block-outline`、`underline` 和 `underline-thin`。脚本直接
-读取 Monaco 渲染的光标形状，因此 Vim 扩展触发的形状切换无需额外配置。
-
-过渡也支持基于 Monaco 的扩展搜索框，直接读取已渲染的光标几何信息，不读取搜索文字。
-不支持普通 HTML 输入框和密码框。
-
-窗口隐藏时暂停绘制与扫描；恢复后从光标当前位置开始，不重播后台移动。
+弹簧时长为基础参数，并非固定动画时长。
+空闲时停止绘制，默认每 100 毫秒扫描一次；窗口隐藏时两者均暂停。
 
 ## 兼容性
 
 | 环境 | 状态 |
 | --- | --- |
-| Windows 11 上的 VS Code 桌面版 | 已测试并支持 |
-| macOS 上的 VS Code 桌面版 | 已完成人工验证 |
-| Linux 上的 VS Code 桌面版 | 按实现应可工作，尚未人工验证 |
-| VS Code Insiders 或 VSCodium | 尚未正式验证 |
+| Windows 11、macOS 上的 VS Code 桌面版 | 已完成人工验证 |
+| Linux、VS Code Insiders、VSCodium | 尚未验证 |
 | VS Code 网页版 | 不支持 |
 
-本项目依赖非官方工作台注入。VS Code 更新后可能需要重新启用脚本，也可能因内部 DOM 变化而
-影响动画。
+依赖非官方工作台注入，可能触发安装完整性警告。
+VS Code 更新后可能需要重新注入或适配。不为普通 HTML 输入框和密码框提供动画。
 
 ## 隐私
 
-运行时读取光标几何、样式及界面活动状态，不读取输入文字，不发起网络请求，
-不访问 Cookie、存储或剪贴板，不执行系统命令，也不持久化数据。问题报告方式见
-[SECURITY.md](./SECURITY.md)。
+仅读取光标几何、样式及界面活动状态。不读取输入文字、Cookie 或剪贴板，
+不联网、不持久化存储、不执行系统命令。错误提示不含原始异常详情。
+私密问题报告见 [SECURITY.md](./SECURITY.md)。
 
 ## 故障排查
 
-- **没有动画：**检查 `file:///` URI，运行 `Enable Custom CSS and JS`，然后重启 VS Code。
-- **动画暂停：**检查系统的减少动态效果设置和窗口焦点。
-- **运行异常后停止：**脚本会停用覆盖层并恢复原生光标。运行 `Reload Custom CSS and JS`
-  并重启 VS Code 后重试。
-- **更新后失效：**运行 `Reload Custom CSS and JS`，然后重启 VS Code。
-- **提示安装已被修改：**这是工作台注入的正常结果。
-- **拖尾显示在菜单上方：**调低 `CONFIG.zIndex`。
+- **没有动画：**检查本地 URI、加载器启用状态、窗口焦点及减少动态效果设置。
+- **异常或更新后停止：**重新加载脚本并重启 VS Code。
+- **拖尾覆盖菜单：**调低 `CONFIG.zIndex`。
 
-## 卸载
-
-从 `vscode_custom_css.imports` 中移除脚本 URI，运行 `Reload Custom CSS and JS`，然后重启
-VS Code。
+**卸载：**移除 `vscode_custom_css.imports` 中的脚本 URI，重新加载并重启 VS Code。
 
 ## 开发
 
-Node.js 仅用于本地验证和打包发布资产。
+Node.js 仅用于测试和发布打包。
 
 ```powershell
 node --check cursor-trail.js
@@ -138,11 +109,9 @@ node --test
 node scripts/prepare-release.js
 ```
 
-参与开发前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)，维护者发布流程见
-[docs/PUBLISHING.md](./docs/PUBLISHING.md)。
+[贡献指南](./CONTRIBUTING.md) · [发布指南](./docs/PUBLISHING.md)
 
 ## 许可证
 
-本项目使用 [MIT 许可证](./LICENSE)。项目受
-[30d98f9b2/Neovide-Cursor](https://github.com/30d98f9b2/Neovide-Cursor) 和
-[Neovide](https://github.com/neovide/neovide) 启发；归属信息见 [NOTICE.md](./NOTICE.md)。
+[MIT](./LICENSE)。受 [Neovide](https://github.com/neovide/neovide) 与
+[30d98f9b2/Neovide-Cursor](https://github.com/30d98f9b2/Neovide-Cursor) 启发。归属信息见 [NOTICE.md](./NOTICE.md)。
