@@ -96,7 +96,8 @@ current caret position without replaying background movement.
 | Environment | Status |
 | --- | --- |
 | VS Code desktop on Windows 11 | Tested and supported |
-| VS Code desktop on macOS or Linux | Expected to work; not manually verified |
+| VS Code desktop on macOS | Manually verified |
+| VS Code desktop on Linux | Expected to work; not manually verified |
 | VS Code Insiders or VSCodium | Not officially verified |
 | VS Code for the Web | Not supported |
 
@@ -113,6 +114,8 @@ data. See [SECURITY.md](./SECURITY.md) for reporting instructions.
 
 - **No animation:** verify the `file:///` URI, run `Enable Custom CSS and JS`, and restart VS Code.
 - **Paused animation:** check the system reduced-motion setting and window focus.
+- **Stopped after a runtime error:** the script disables its overlay and restores the native caret.
+  Run `Reload Custom CSS and JS` and restart VS Code to retry.
 - **Stopped after an update:** run `Reload Custom CSS and JS`, then restart VS Code.
 - **Modified installation warning:** this is an expected consequence of workbench injection.
 - **Trail above menus:** reduce `CONFIG.zIndex`.

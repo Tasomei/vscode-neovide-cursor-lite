@@ -45,6 +45,14 @@
 
     let manager = null;
     let startTimer = 0;
+    let failureReported = false;
+
+    function reportFailure() {
+        if (failureReported) return;
+        failureReported = true;
+        // 仅输出固定提示，不记录异常对象、输入内容或本机路径。
+        console.warn("[Neovide Cursor Lite] 动画发生异常，已停止。请重新加载脚本。");
+    }
 
     // 立即注册实例占位，避免 DOM 就绪前重复注入产生多个渲染循环。
     window[GLOBAL_KEY] = {
@@ -494,8 +502,8 @@
             this.canvas = document.createElement("canvas");
             this.context = this.canvas.getContext("2d");
 
-            this.onResize = this.resize.bind(this);
-            this.onScroll = this.markScrolling.bind(this);
+            this.onResize = this.guard(this.resize.bind(this));
+            this.onScroll = this.guard(this.markScrolling.bind(this));
             this.onUserInput = (event) => {
                 if (event?.type === "mousedown") {
                     const editor = event.target?.closest?.(".monaco-editor");
@@ -518,7 +526,25 @@
                 this.windowFocused = false;
                 this.updateActivity();
             };
-            this.loop = this.loop.bind(this);
+            this.onUserInput = this.guard(this.onUserInput);
+            this.onEditorFocus = this.guard(this.onEditorFocus);
+            this.onActivityChange = this.guard(this.onActivityChange);
+            this.onFocus = this.guard(this.onFocus);
+            this.onBlur = this.guard(this.onBlur);
+            this.onScan = this.guard(this.scan.bind(this));
+            this.loop = this.guard(this.loop.bind(this));
+        }
+
+        guard(callback) {
+            return (...args) => {
+                if (this.disposed) return;
+                try {
+                    return callback(...args);
+                } catch {
+                    this.dispose();
+                    reportFailure();
+                }
+            };
         }
 
         start() {
@@ -608,7 +634,7 @@
             } else {
                 this.resize();
                 this.scan();
-                this.scanTimer = window.setInterval(() => this.scan(), CONFIG.scanIntervalMs);
+                this.scanTimer = window.setInterval(this.onScan, CONFIG.scanIntervalMs);
                 this.requestFrame();
             }
         }
@@ -649,9 +675,9 @@
             if (this.paused || this.disposed) return;
             this.isScrolling = true;
             clearTimeout(this.scrollTimer);
-            this.scrollTimer = setTimeout(() => {
+            this.scrollTimer = setTimeout(this.guard(() => {
                 this.isScrolling = false;
-            }, 100);
+            }), 100);
             this.requestFrame();
         }
 
@@ -798,12 +824,12 @@
             if (!this.canvasVisible || this.fadePending) return;
 
             this.fadePending = true;
-            this.fadeTimer = setTimeout(() => {
+            this.fadeTimer = setTimeout(this.guard(() => {
                 this.canvas.style.transition = `opacity ${CONFIG.fadeMs}ms ease-out`;
                 this.canvas.style.opacity = "0";
                 this.canvasVisible = false;
                 this.fadePending = false;
-            }, CONFIG.holdMs);
+            }), CONFIG.holdMs);
         }
 
         loop() {
@@ -947,30 +973,54 @@
         }
 
         dispose() {
+            if (this.disposed) return;
             this.disposed = true;
-            cancelAnimationFrame(this.animationFrame);
+            this.paused = true;
+            const clean = (callback) => {
+                try {
+                    callback();
+                } catch {
+                    // 单项清理失败不阻断其余资源释放，并给出固定提示。
+                    reportFailure();
+                }
+            };
+            // 先撤销光标隐藏规则；节点清理失败时也尽量保留原生光标。
+            clean(() => { this.style.disabled = true; });
+            clean(() => this.style.remove());
+            clean(() => { this.canvas.style.opacity = "0"; });
+            clean(() => this.canvas.remove());
+            clean(() => cancelAnimationFrame(this.animationFrame));
+            clean(() => clearInterval(this.scanTimer));
+            clean(() => clearTimeout(this.scrollTimer));
+            clean(() => clearTimeout(this.fadeTimer));
             this.animationFrame = 0;
-            clearInterval(this.scanTimer);
-            clearTimeout(this.scrollTimer);
-            clearTimeout(this.fadeTimer);
-            window.removeEventListener("resize", this.onResize);
-            window.removeEventListener("focus", this.onFocus);
-            window.removeEventListener("blur", this.onBlur);
-            document.removeEventListener("visibilitychange", this.onActivityChange);
-            document.removeEventListener("focusin", this.onEditorFocus);
-            document.removeEventListener("focusout", this.onEditorFocus);
-            this.reducedMotion?.removeEventListener("change", this.onActivityChange);
-            document.removeEventListener("scroll", this.onScroll, { capture: true });
-            document.removeEventListener("keydown", this.onUserInput, { capture: true });
-            document.removeEventListener("mousedown", this.onUserInput, { capture: true });
+            this.scanTimer = 0;
+            this.scrollTimer = 0;
+            this.fadeTimer = 0;
+            for (const [target, event, listener, capture = false] of [
+                [window, "resize", this.onResize],
+                [window, "focus", this.onFocus],
+                [window, "blur", this.onBlur],
+                [document, "visibilitychange", this.onActivityChange],
+                [document, "focusin", this.onEditorFocus],
+                [document, "focusout", this.onEditorFocus],
+                [this.reducedMotion, "change", this.onActivityChange],
+                [document, "scroll", this.onScroll, true],
+                [document, "keydown", this.onUserInput, true],
+                [document, "mousedown", this.onUserInput, true]
+            ]) {
+                clean(() => target?.removeEventListener(event, listener, { capture }));
+            }
 
             this.cursors.forEach((_, cursor) => {
-                cursor.classList.remove(HIDDEN_CLASS);
+                clean(() => cursor.classList.remove(HIDDEN_CLASS));
             });
 
             this.cursors.clear();
-            this.canvas.remove();
-            this.style.remove();
+            this.focusedEditor = null;
+            this.focusedVisual = null;
+            this.pointerFocus = null;
+            this.focusScanPending = false;
         }
     }
 
@@ -981,8 +1031,17 @@
         }
 
         startTimer = 0;
-        const nextManager = new CursorManager();
-        manager = nextManager.start() ? nextManager : null;
+        try {
+            manager = new CursorManager();
+            if (!manager.start()) {
+                manager.dispose();
+                manager = null;
+            }
+        } catch {
+            manager?.dispose();
+            manager = null;
+            reportFailure();
+        }
     }
 
     startWhenReady();

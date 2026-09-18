@@ -93,7 +93,8 @@ Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
 | 环境 | 状态 |
 | --- | --- |
 | Windows 11 上的 VS Code 桌面版 | 已测试并支持 |
-| macOS 或 Linux 上的 VS Code 桌面版 | 按实现应可工作，尚未人工验证 |
+| macOS 上的 VS Code 桌面版 | 已完成人工验证 |
+| Linux 上的 VS Code 桌面版 | 按实现应可工作，尚未人工验证 |
 | VS Code Insiders 或 VSCodium | 尚未正式验证 |
 | VS Code 网页版 | 不支持 |
 
@@ -110,6 +111,8 @@ Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
 
 - **没有动画：**检查 `file:///` URI，运行 `Enable Custom CSS and JS`，然后重启 VS Code。
 - **动画暂停：**检查系统的减少动态效果设置和窗口焦点。
+- **运行异常后停止：**脚本会停用覆盖层并恢复原生光标。运行 `Reload Custom CSS and JS`
+  并重启 VS Code 后重试。
 - **更新后失效：**运行 `Reload Custom CSS and JS`，然后重启 VS Code。
 - **提示安装已被修改：**这是工作台注入的正常结果。
 - **拖尾显示在菜单上方：**调低 `CONFIG.zIndex`。

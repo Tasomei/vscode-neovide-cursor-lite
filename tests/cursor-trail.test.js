@@ -36,6 +36,7 @@ function createHarness(options = {}) {
     const windowListeners = new Map();
     const mediaListeners = new Map();
     const drawings = [];
+    const warnings = [];
     let points = [];
     let focused = options.focused ?? true;
 
@@ -245,7 +246,7 @@ function createHarness(options = {}) {
         clearTimeout: clearTimeoutFake,
         setInterval: setIntervalFake,
         clearInterval: clearIntervalFake,
-        console
+        console: { warn: (...args) => warnings.push(args) }
     };
     const context = vm.createContext(sandbox);
 
@@ -286,6 +287,8 @@ function createHarness(options = {}) {
         document,
         cursor,
         drawings,
+        context2d,
+        warnings,
         setShape(shape, target = cursor) {
             target.layer.classList.values.clear();
             target.layer.classList.add(`cursor-${shape}-style`);
@@ -320,6 +323,9 @@ function createHarness(options = {}) {
         drainFrames,
         emitDocument(type, details) {
             emit(documentListeners, type, details);
+        },
+        emitWindow(type) {
+            emit(windowListeners, type);
         },
         tickIntervals() {
             for (const timer of [...intervals.values()]) timer.callback();
@@ -434,6 +440,114 @@ test("preserves the native caret when a 2D context is unavailable", () => {
 
     harness.window[GLOBAL_KEY].dispose();
     assert.equal(harness.window[GLOBAL_KEY], undefined);
+});
+
+function assertStoppedAfterFailure(harness) {
+    assert.equal(harness.cursor.classList.contains(HIDDEN_CLASS), false);
+    assert.equal(harness.document.body.children.length, 0);
+    assert.equal(harness.document.head.children.length, 0);
+    assert.equal(harness.pendingAnimationFrames, 0);
+    assert.equal(harness.intervalCount, 0);
+    assert.equal(harness.timeoutCount, 0);
+    assert.equal(harness.mediaListenerCount, 0);
+    for (const event of ["keydown", "mousedown", "scroll", "visibilitychange", "focusin", "focusout"]) {
+        assert.equal(harness.listenerCount("document", event), 0);
+    }
+    for (const event of ["resize", "focus", "blur"]) {
+        assert.equal(harness.listenerCount("window", event), 0);
+    }
+    assert.equal(harness.warnings.length, 1);
+    assert.equal(harness.warnings[0].length, 1);
+    assert.equal(typeof harness.warnings[0][0], "string");
+    assert.doesNotMatch(harness.warnings[0][0], /PRIVATE_ERROR_DETAIL/);
+}
+
+for (const fault of ["draw", "scan", "geometry", "resize", "suspend"]) {
+    test(`restores the native caret and stops all work after a ${fault} failure`, (context) => {
+        const h = createHarness();
+        context.after(() => h.window[GLOBAL_KEY]?.dispose());
+        h.inject();
+        h.drainFrames();
+        h.cursor.rect.left += 200;
+        h.emitDocument("keydown");
+        h.runFrame();
+        assert.equal(h.cursor.classList.contains(HIDDEN_CLASS), true);
+        const fail = () => { throw new Error("PRIVATE_ERROR_DETAIL"); };
+        let trigger;
+        if (fault === "draw") { h.context2d.fill = fail; trigger = () => h.runFrame(); }
+        if (fault === "scan") { h.document.querySelectorAll = fail; trigger = () => h.tickIntervals(); }
+        if (fault === "geometry") { h.cursor.getBoundingClientRect = fail; trigger = () => h.runFrame(); }
+        if (fault === "resize") { h.context2d.setTransform = fail; trigger = () => h.emitWindow("resize"); }
+        if (fault === "suspend") { h.context2d.clearRect = fail; trigger = () => h.setHidden(true); }
+        assert.doesNotThrow(trigger);
+        assertStoppedAfterFailure(h);
+        h.emitDocument("keydown");
+        h.tickIntervals();
+        h.runFrame();
+        assertStoppedAfterFailure(h);
+    });
+}
+
+test("cleans up a partially initialized instance when startup drawing setup fails", (context) => {
+    const h = createHarness();
+    context.after(() => h.window[GLOBAL_KEY]?.dispose());
+    h.context2d.setTransform = () => { throw new Error("PRIVATE_ERROR_DETAIL"); };
+    assert.doesNotThrow(() => h.inject());
+    assertStoppedAfterFailure(h);
+});
+
+test("reinjects successfully after a drawing failure without duplicating resources", () => {
+    const h = createHarness();
+    h.inject();
+    h.drainFrames();
+    h.cursor.rect.left += 200;
+    h.emitDocument("keydown");
+    h.runFrame();
+    const originalFill = h.context2d.fill;
+    h.context2d.fill = () => { throw new Error("PRIVATE_ERROR_DETAIL"); };
+    h.runFrame();
+    assertStoppedAfterFailure(h);
+    h.context2d.fill = originalFill;
+    h.inject();
+    assert.equal(h.document.body.children.length, 1);
+    assert.equal(h.document.head.children.length, 1);
+    assert.equal(h.intervalCount, 1);
+    assert.equal(h.listenerCount("document", "keydown"), 1);
+    assert.equal(h.listenerCount("document", "focusin"), 1);
+    h.drainFrames();
+    h.cursor.rect.left += 200;
+    h.emitDocument("keydown");
+    h.runFrame();
+    assert.equal(h.cursor.classList.contains(HIDDEN_CLASS), true);
+    h.drainFrames();
+    assert.equal(h.cursor.classList.contains(HIDDEN_CLASS), false);
+    h.window[GLOBAL_KEY].dispose();
+    assertStoppedAfterFailure(h);
+});
+
+test("disables hiding styles and completes cleanup even if a caret node rejects class removal", () => {
+    const h = createHarness();
+    const extra = h.addCursor({ left: 300, top: 60, width: 6, height: 18 });
+    h.inject();
+    h.drainFrames();
+    h.cursor.rect.left += 200;
+    h.emitDocument("keydown");
+    h.runFrame();
+    const style = h.document.head.children[0];
+    h.cursor.classList.remove = () => { throw new Error("PRIVATE_ERROR_DETAIL"); };
+    assert.doesNotThrow(() => h.window[GLOBAL_KEY].dispose());
+    assert.equal(style.disabled, true);
+    assert.equal(style.isConnected, false);
+    assert.equal(extra.classList.contains(HIDDEN_CLASS), false);
+    assert.equal(h.document.body.children.length, 0);
+    assert.equal(h.document.head.children.length, 0);
+    assert.equal(h.pendingAnimationFrames, 0);
+    assert.equal(h.intervalCount, 0);
+    assert.equal(h.timeoutCount, 0);
+    assert.equal(h.listenerCount("document", "keydown"), 0);
+    assert.equal(h.mediaListenerCount, 0);
+    assert.equal(h.warnings.length, 1);
+    assert.doesNotMatch(JSON.stringify(h.warnings), /PRIVATE_ERROR_DETAIL/);
 });
 
 test("uses every public configuration option in the runtime", () => {
