@@ -93,6 +93,53 @@ VS Code 更新后可能需要重新注入或适配。不为普通 HTML 输入框
 
 **卸载：**移除 `vscode_custom_css.imports` 中的脚本 URI，重新加载并重启 VS Code。
 
+<details>
+<summary>临时开关</summary>
+
+在开发者工具 Console 中关闭动画：
+
+```javascript
+window.__vscodeNeovideCursorLite.setEnabled(false)
+```
+
+重新开启：
+
+```javascript
+window.__vscodeNeovideCursorLite.setEnabled(true)
+```
+
+仅对当前窗口生效，重新加载脚本后恢复默认开启。开启后仍遵循焦点、可见性和减少动态效果设置。
+故障实例需重新加载脚本。
+
+</details>
+
+<details>
+<summary>只读诊断</summary>
+
+运行 `Developer: Toggle Developer Tools`，在 Console 中执行：
+
+```javascript
+window.__vscodeNeovideCursorLite?.getStatus?.() ?? { state: "diagnostics-unavailable" }
+```
+
+| 状态 | 含义 |
+| --- | --- |
+| `starting` | 等待页面就绪 |
+| `active` / `idle` | 渲染循环活跃／空闲 |
+| `disabled` | 手动关闭；`pauseReasons` 包含 `manual` |
+| `paused` | 原因见 `pauseReasons`：`hidden`（隐藏）、`blur`（失焦）、`reduced-motion`（减少动态效果） |
+| `no-cursor` | 未跟踪到 Monaco 光标 |
+| `unavailable` | Canvas 不可用 |
+| `failed` | 分类见 `failure`：`initialization-error`（初始化）、`runtime-error`（运行）、`cleanup-error`（清理） |
+| `disposed` | 实例已移除，仅保留的旧引用可查询 |
+| `diagnostics-unavailable` | 脚本未加载、已移除，或旧版尚不支持诊断 |
+
+`enabled` 表示临时开关状态，不代表动画正在运行。
+快照仅包含缓存状态、已跟踪光标数量和调度标志，不扫描、不唤醒渲染、不包含输入数据。
+`schemaVersion` 为诊断格式版本，并非软件版本。打开开发者工具可能改变窗口焦点，显示 `blur` 暂停原因。
+
+</details>
+
 ## 开发
 
 Node.js 仅用于测试和发布打包。

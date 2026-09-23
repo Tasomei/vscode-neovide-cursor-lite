@@ -46,8 +46,13 @@
     let manager = null;
     let startTimer = 0;
     let failureReported = false;
+    let lifecycle = "starting";
+    let failureReason = null;
+    let enabled = true;
 
-    function reportFailure() {
+    function reportFailure(reason = "runtime-error") {
+        lifecycle = "failed";
+        failureReason = failureReason || reason;
         if (failureReported) return;
         failureReported = true;
         // 仅输出固定提示，不记录异常对象、输入内容或本机路径。
@@ -55,7 +60,34 @@
     }
 
     // 立即注册实例占位，避免 DOM 就绪前重复注入产生多个渲染循环。
-    window[GLOBAL_KEY] = {
+    const controller = {
+        getStatus() {
+            // 仅复制已缓存的状态，不读取 DOM、扫描光标或唤醒渲染。
+            let state = lifecycle;
+            if (state === "ready" && manager) {
+                state = !enabled ? "disabled" : manager.paused ? "paused" : manager.cursors.size === 0 ? "no-cursor"
+                    : manager.animationFrame ? "active" : "idle";
+            }
+            return {
+                schemaVersion: 1,
+                state,
+                enabled,
+                pauseReasons: manager ? [...manager.pauseReasons] : [],
+                cursorCount: manager?.cursors.size || 0,
+                frameScheduled: Boolean(manager?.animationFrame),
+                scanScheduled: Boolean(manager?.scanTimer),
+                failure: failureReason
+            };
+        },
+        setEnabled(value) {
+            if (typeof value !== "boolean") throw new TypeError("enabled 必须是布尔值。");
+            // 仅切换健康实例；故障或销毁后须重新加载，不借开关重启。
+            if ((lifecycle === "starting" || lifecycle === "ready") && enabled !== value) {
+                enabled = value;
+                manager?.onActivityChange();
+            }
+            return controller.getStatus();
+        },
         dispose() {
             clearTimeout(startTimer);
             startTimer = 0;
@@ -63,9 +95,12 @@
                 manager.dispose();
                 manager = null;
             }
-            delete window[GLOBAL_KEY];
+            lifecycle = "disposed";
+            // 旧引用仅清理自身，避免误删重新注入后的实例入口。
+            if (window[GLOBAL_KEY] === controller) delete window[GLOBAL_KEY];
         }
     };
+    window[GLOBAL_KEY] = controller;
 
     function clamp(value, min, max) {
         return Math.min(Math.max(value, min), max);
@@ -480,6 +515,7 @@
             this.pointerFocus = null;
             this.lastFrameAt = performance.now();
             this.paused = true;
+            this.pauseReasons = [];
             this.disposed = false;
             this.windowFocused = document.hasFocus();
             this.reducedMotion = typeof window.matchMedia === "function"
@@ -541,6 +577,7 @@
                 try {
                     return callback(...args);
                 } catch {
+                    failureReason = failureReason || "runtime-error";
                     this.dispose();
                     reportFailure();
                 }
@@ -601,9 +638,15 @@
 
         updateActivity() {
             if (this.disposed) return;
-            const paused = document.hidden ||
-                (CONFIG.pauseWhenWindowBlurred && !this.windowFocused) ||
-                (CONFIG.respectReducedMotion && this.reducedMotion?.matches);
+            // 每次活动事件更新原因，即使暂停状态未改变，也保留所有有效原因。
+            this.pauseReasons = [];
+            if (!enabled) this.pauseReasons.push("manual");
+            if (document.hidden) this.pauseReasons.push("hidden");
+            if (CONFIG.pauseWhenWindowBlurred && !this.windowFocused) this.pauseReasons.push("blur");
+            if (CONFIG.respectReducedMotion && this.reducedMotion?.matches) {
+                this.pauseReasons.push("reduced-motion");
+            }
+            const paused = this.pauseReasons.length > 0;
             this.style.disabled = Boolean(paused);
             if (Boolean(paused) === this.paused) return;
             this.paused = Boolean(paused);
@@ -976,12 +1019,13 @@
             if (this.disposed) return;
             this.disposed = true;
             this.paused = true;
+            this.pauseReasons = [];
             const clean = (callback) => {
                 try {
                     callback();
                 } catch {
                     // 单项清理失败不阻断其余资源释放，并给出固定提示。
-                    reportFailure();
+                    reportFailure("cleanup-error");
                 }
             };
             // 先撤销光标隐藏规则；节点清理失败时也尽量保留原生光标。
@@ -1036,11 +1080,16 @@
             if (!manager.start()) {
                 manager.dispose();
                 manager = null;
+                lifecycle = "unavailable";
+                failureReason = "canvas-unavailable";
+            } else {
+                lifecycle = "ready";
             }
         } catch {
+            failureReason = failureReason || "initialization-error";
             manager?.dispose();
             manager = null;
-            reportFailure();
+            reportFailure("initialization-error");
         }
     }
 

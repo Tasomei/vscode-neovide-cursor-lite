@@ -93,6 +93,54 @@ See [SECURITY.md](./SECURITY.md) for private reporting.
 
 **Uninstall:** remove the script URI from `vscode_custom_css.imports`, reload and restart VS Code.
 
+<details>
+<summary>Temporary controls</summary>
+
+In the Developer Tools Console, disable the animation:
+
+```javascript
+window.__vscodeNeovideCursorLite.setEnabled(false)
+```
+
+Re-enable it:
+
+```javascript
+window.__vscodeNeovideCursorLite.setEnabled(true)
+```
+
+Changes apply to this window only and reset on script reload. Enabling still respects focus,
+visibility and reduced-motion settings. Failed instances require a script reload.
+
+</details>
+
+<details>
+<summary>Read-only diagnostics</summary>
+
+Run `Developer: Toggle Developer Tools` and enter this in the Console:
+
+```javascript
+window.__vscodeNeovideCursorLite?.getStatus?.() ?? { state: "diagnostics-unavailable" }
+```
+
+| State | Meaning |
+| --- | --- |
+| `starting` | Waiting for the document |
+| `active` / `idle` | Render loop active / suspended |
+| `disabled` | Manually disabled; `pauseReasons` includes `manual` |
+| `paused` | See `pauseReasons`: `hidden`, `blur`, `reduced-motion` |
+| `no-cursor` | No tracked Monaco carets |
+| `unavailable` | Canvas unavailable |
+| `failed` | See `failure`: `initialization-error`, `runtime-error`, `cleanup-error` |
+| `disposed` | Instance removed; only observable through a retained reference |
+| `diagnostics-unavailable` | Script not loaded, removed, or too old to provide diagnostics |
+
+`enabled` records the temporary switch, not whether animation is currently running.
+The snapshot contains cached state, tracked caret count and scheduling flags only. It does not scan,
+wake rendering or include input data. `schemaVersion` identifies the diagnostic format, not the release.
+Opening Developer Tools may change window focus and produce a `blur` pause reason.
+
+</details>
+
 ## Development
 
 Node.js is needed only for testing and release packaging.

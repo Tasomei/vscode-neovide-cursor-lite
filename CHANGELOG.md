@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-23
+
+### Added
+
+- Read-only diagnostics for lifecycle state, pause reasons, tracked caret count and scheduling status.
+- Fixed failure categories without exposing exception details, input text or file paths.
+- Per-window temporary controls that stop rendering and scanning while preserving native caret and system motion preferences.
+
 ## [0.4.0] - 2026-09-18
 
 ### Added
@@ -110,7 +118,8 @@ The runtime animation and its default feel are unchanged in this release.
 - Automatic cleanup when the script is injected again.
 - Single-file distribution with no build step or runtime dependency.
 
-[Unreleased]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.2...v0.2.0

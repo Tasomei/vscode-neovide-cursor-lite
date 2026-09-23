@@ -550,6 +550,271 @@ test("disables hiding styles and completes cleanup even if a caret node rejects 
     assert.doesNotMatch(JSON.stringify(h.warnings), /PRIVATE_ERROR_DETAIL/);
 });
 
+function statusOf(harness) {
+    return JSON.parse(JSON.stringify(harness.window[GLOBAL_KEY].getStatus()));
+}
+
+test("diagnostics distinguish active, idle and missing carets without waking the runtime", (context) => {
+    const h = createHarness();
+    context.after(() => h.window[GLOBAL_KEY]?.dispose());
+    h.inject();
+    assert.equal(statusOf(h).state, "active");
+    h.drainFrames();
+    assert.deepEqual(statusOf(h), {
+        schemaVersion: 1, state: "idle", enabled: true, pauseReasons: [], cursorCount: 1,
+        frameScheduled: false, scanScheduled: true, failure: null
+    });
+    h.document.querySelectorAll = () => { throw new Error("diagnostics must not scan"); };
+    h.cursor.getBoundingClientRect = () => { throw new Error("diagnostics must not read geometry"); };
+    Object.defineProperty(h.document, "hidden", { get() { throw new Error("diagnostics must not read live DOM state"); } });
+    for (let i = 0; i < 100; i++) assert.equal(statusOf(h).state, "idle");
+    assert.equal(h.pendingAnimationFrames, 0);
+    assert.equal(h.intervalCount, 1);
+    assert.equal(h.warnings.length, 0);
+    h.window[GLOBAL_KEY].dispose();
+
+    const empty = createHarness();
+    context.after(() => empty.window[GLOBAL_KEY]?.dispose());
+    empty.cursor.isConnected = false;
+    empty.inject();
+    empty.drainFrames();
+    assert.equal(statusOf(empty).state, "no-cursor");
+    assert.equal(statusOf(empty).cursorCount, 0);
+});
+
+test("diagnostics report overlapping pause reasons and return isolated snapshots", (context) => {
+    const h = createHarness({ reducedMotion: true, focused: false, hidden: true });
+    context.after(() => h.window[GLOBAL_KEY]?.dispose());
+    h.inject();
+    assert.deepEqual(statusOf(h).pauseReasons, ["hidden", "blur", "reduced-motion"]);
+    const snapshot = h.window[GLOBAL_KEY].getStatus();
+    snapshot.pauseReasons.length = 0;
+    snapshot.state = "active";
+    snapshot.enabled = false;
+    assert.equal(statusOf(h).state, "paused");
+    assert.equal(statusOf(h).enabled, true);
+    assert.deepEqual(statusOf(h).pauseReasons, ["hidden", "blur", "reduced-motion"]);
+    h.setHidden(false);
+    assert.deepEqual(statusOf(h).pauseReasons, ["blur", "reduced-motion"]);
+    h.setFocused(true);
+    assert.deepEqual(statusOf(h).pauseReasons, ["reduced-motion"]);
+    h.setReducedMotion(false);
+    h.drainFrames();
+    assert.equal(statusOf(h).state, "idle");
+});
+
+test("diagnostics distinguish unavailable canvas, initialization errors and runtime errors", (context) => {
+    for (const fault of ["canvas", "init", "runtime"]) {
+        const h = createHarness({ contextAvailable: fault !== "canvas" });
+        context.after(() => h.window[GLOBAL_KEY]?.dispose());
+        if (fault === "init") h.context2d.setTransform = () => { throw new Error("PRIVATE_ERROR_DETAIL"); };
+        h.inject();
+        if (fault === "runtime") {
+            h.context2d.fill = () => { throw new Error("PRIVATE_ERROR_DETAIL"); };
+            h.runFrame();
+        }
+        const s = statusOf(h);
+        assert.equal(s.state, fault === "canvas" ? "unavailable" : "failed");
+        assert.equal(s.failure, { canvas: "canvas-unavailable", init: "initialization-error", runtime: "runtime-error" }[fault]);
+        assert.equal(s.frameScheduled, false);
+        assert.equal(s.scanScheduled, false);
+        assert.doesNotMatch(JSON.stringify(s), /PRIVATE_ERROR_DETAIL/);
+        assert.deepEqual(Object.keys(s).sort(), ["schemaVersion", "state", "enabled", "pauseReasons", "cursorCount", "frameScheduled", "scanScheduled", "failure"].sort());
+    }
+});
+
+test("diagnostics retain the original failure category if cleanup also fails", (context) => {
+    const h = createHarness();
+    context.after(() => h.window[GLOBAL_KEY]?.dispose());
+    h.inject();
+    h.cursor.classList.remove = () => { throw new Error("PRIVATE_CLEANUP_DETAIL"); };
+    h.context2d.fill = () => { throw new Error("PRIVATE_RUNTIME_DETAIL"); };
+    h.runFrame();
+    assert.equal(statusOf(h).state, "failed");
+    assert.equal(statusOf(h).failure, "runtime-error");
+    assert.equal(h.warnings.length, 1);
+    assert.doesNotMatch(JSON.stringify(statusOf(h)), /PRIVATE_/);
+});
+
+test("diagnostics respect configured pause policies", (context) => {
+    const h = createHarness({
+        reducedMotion: true, focused: false,
+        source: SOURCE.replace("respectReducedMotion: true", "respectReducedMotion: false")
+            .replace("pauseWhenWindowBlurred: true", "pauseWhenWindowBlurred: false")
+    });
+    context.after(() => h.window[GLOBAL_KEY]?.dispose());
+    h.inject();
+    h.drainFrames();
+    assert.equal(statusOf(h).state, "idle");
+    assert.deepEqual(statusOf(h).pauseReasons, []);
+    h.setHidden(true);
+    assert.equal(statusOf(h).state, "paused");
+    assert.deepEqual(statusOf(h).pauseReasons, ["hidden"]);
+});
+
+test("diagnostics identify startup and disposal without changing a reinjected instance", (context) => {
+    const h = createHarness();
+    context.after(() => h.window[GLOBAL_KEY]?.dispose());
+    const body = h.document.body;
+    h.document.body = null;
+    h.inject();
+    assert.equal(statusOf(h).state, "starting");
+    assert.equal(h.timeoutCount, 1);
+    const old = h.window[GLOBAL_KEY];
+    h.document.body = body;
+    h.runFrame(100);
+    h.drainFrames();
+    assert.equal(statusOf(h).state, "idle");
+    h.inject();
+    assert.equal(old.getStatus().state, "disposed");
+    assert.equal(statusOf(h).state, "active");
+    const current = h.window[GLOBAL_KEY];
+    current.dispose();
+    assert.equal(h.window[GLOBAL_KEY], undefined);
+    assert.equal(current.getStatus().state, "disposed");
+    assert.equal(current.getStatus().cursorCount, 0);
+});
+
+test("manual disable restores the native caret and stops work until explicitly enabled", (context) => {
+    const h = createHarness();
+    context.after(() => h.window[GLOBAL_KEY]?.dispose());
+    h.inject();
+    h.drainFrames();
+    h.cursor.rect.left += 200;
+    h.emitDocument("keydown");
+    h.runFrame();
+    assert.equal(h.cursor.classList.contains(HIDDEN_CLASS), true);
+    const api = h.window[GLOBAL_KEY];
+    const disabled = api.setEnabled(false);
+    assert.equal(disabled.state, "disabled");
+    assert.equal(disabled.enabled, false);
+    assert.deepEqual(Array.from(disabled.pauseReasons), ["manual"]);
+    assert.equal(h.cursor.classList.contains(HIDDEN_CLASS), false);
+    assert.equal(h.document.head.children[0].disabled, true);
+    assert.equal(h.document.body.children[0].style.opacity, "0");
+    assert.equal(h.drawings.length, 0);
+    assert.equal(h.pendingAnimationFrames, 0);
+    assert.equal(h.intervalCount, 0);
+    assert.equal(h.timeoutCount, 0);
+    h.cursor.rect.left = 450;
+    for (const event of ["keydown", "mousedown", "scroll", "focusin", "focusout"]) h.emitDocument(event);
+    h.runFrame();
+    assert.equal(h.pendingAnimationFrames, 0);
+    assert.equal(h.intervalCount, 0);
+    assert.equal(h.timeoutCount, 0);
+    assert.equal(api.setEnabled(true).enabled, true);
+    h.runFrame();
+    assert.equal(bounds(h.drawings[0]).left, 450, "resume must not replay the disabled movement");
+    assert.equal(h.cursor.classList.contains(HIDDEN_CLASS), false);
+    h.drainFrames();
+    h.cursor.rect.left += 80;
+    h.emitDocument("keydown");
+    h.runFrame();
+    assert.equal(h.cursor.classList.contains(HIDDEN_CLASS), true);
+});
+
+for (const reason of ["hidden", "blur", "reduced-motion"]) {
+    test(`manual enable preserves the ${reason} pause policy`, (context) => {
+        const h = createHarness();
+        context.after(() => h.window[GLOBAL_KEY]?.dispose());
+        h.inject();
+        const api = h.window[GLOBAL_KEY];
+        api.setEnabled(false);
+        const pause = value => {
+            if (reason === "hidden") h.setHidden(value);
+            if (reason === "blur") h.setFocused(!value);
+            if (reason === "reduced-motion") h.setReducedMotion(value);
+        };
+        pause(true);
+        assert.deepEqual(Array.from(api.getStatus().pauseReasons), ["manual", reason]);
+        assert.equal(api.setEnabled(true).state, "paused");
+        assert.deepEqual(Array.from(api.getStatus().pauseReasons), [reason]);
+        assert.equal(h.pendingAnimationFrames, 0);
+        assert.equal(h.intervalCount, 0);
+        pause(false);
+        h.drainFrames();
+        assert.equal(api.getStatus().state, "idle");
+        assert.equal(h.intervalCount, 1);
+    });
+}
+
+test("repeated manual switches are idempotent and do not duplicate resources", (context) => {
+    const h = createHarness();
+    context.after(() => h.window[GLOBAL_KEY]?.dispose());
+    h.inject();
+    const api = h.window[GLOBAL_KEY];
+    for (let i = 0; i < 30; i++) {
+        api.setEnabled(false);
+        api.setEnabled(false);
+        assert.equal(h.pendingAnimationFrames, 0);
+        assert.equal(h.intervalCount, 0);
+        assert.equal(h.timeoutCount, 0);
+        api.setEnabled(true);
+        api.setEnabled(true);
+        assert.equal(h.pendingAnimationFrames, 1);
+        assert.equal(h.intervalCount, 1);
+        assert.equal(h.document.head.children.length, 1);
+        assert.equal(h.document.body.children.length, 1);
+        assert.equal(h.listenerCount("document", "keydown"), 1);
+        assert.equal(h.mediaListenerCount, 1);
+        h.drainFrames();
+    }
+    assert.equal(h.warnings.length, 0);
+});
+
+test("manual switches validate input and cannot revive failed instances", (context) => {
+    const h = createHarness();
+    context.after(() => h.window[GLOBAL_KEY]?.dispose());
+    h.inject();
+    const api = h.window[GLOBAL_KEY];
+    const before = statusOf(h);
+    for (const value of [undefined, null, 0, 1, "false", {}, []]) {
+        assert.throws(() => api.setEnabled(value), /布尔值/);
+        assert.deepEqual(statusOf(h), before);
+    }
+    h.context2d.fill = () => { throw new Error("PRIVATE_ERROR_DETAIL"); };
+    h.runFrame();
+    assert.equal(api.setEnabled(false).state, "failed");
+    assert.equal(api.setEnabled(true).state, "failed");
+    assertStoppedAfterFailure(h);
+});
+
+for (const value of [false, true]) {
+    test(`failures during manual setEnabled(${value}) fall back safely`, (context) => {
+        const h = createHarness();
+        context.after(() => h.window[GLOBAL_KEY]?.dispose());
+        h.inject();
+        h.drainFrames();
+        const api = h.window[GLOBAL_KEY];
+        if (value) api.setEnabled(false);
+        h.context2d[value ? "setTransform" : "clearRect"] = () => { throw new Error("PRIVATE_ERROR_DETAIL"); };
+        assert.doesNotThrow(() => api.setEnabled(value));
+        assert.equal(api.getStatus().state, "failed");
+        assertStoppedAfterFailure(h);
+    });
+}
+
+test("manual disable before startup persists only until reinjection", (context) => {
+    const h = createHarness();
+    context.after(() => h.window[GLOBAL_KEY]?.dispose());
+    const body = h.document.body;
+    h.document.body = null;
+    h.inject();
+    const old = h.window[GLOBAL_KEY];
+    assert.equal(old.setEnabled(false).enabled, false);
+    h.document.body = body;
+    h.runFrame(100);
+    assert.equal(statusOf(h).state, "disabled");
+    assert.equal(h.intervalCount, 0);
+    assert.equal(h.pendingAnimationFrames, 0);
+    h.inject();
+    const current = h.window[GLOBAL_KEY];
+    assert.equal(current.getStatus().enabled, true);
+    assert.equal(old.setEnabled(true).state, "disposed");
+    old.dispose();
+    assert.equal(h.window[GLOBAL_KEY], current, "old handles must not remove a newer instance");
+});
+
 test("uses every public configuration option in the runtime", () => {
     const configBlock = SOURCE.match(/const CONFIG = \{([\s\S]*?)\n    \};/);
     assert.ok(configBlock, "the CONFIG block should be present");
