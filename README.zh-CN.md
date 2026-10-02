@@ -19,24 +19,21 @@
 
 1. 安装 [Custom CSS and JS Loader](https://marketplace.visualstudio.com/items?itemName=be5invis.vscode-custom-css)。
 2. 下载 `cursor-trail.js`，保存至固定的本地目录。
-3. 打开 `Preferences: Open User Settings (JSON)`，将文件 URI 加入 `vscode_custom_css.imports`：
+3. 打开 `Preferences: Open User Settings (JSON)`，添加文件 URI，保留已有导入项：
 
    ```json
    {
-     "vscode_custom_css.imports": [
-       "file:///C:/path/to/cursor-trail.js"
-     ]
+     "vscode_custom_css.imports": ["file:///C:/path/to/cursor-trail.js"]
    }
    ```
 
-   替换示例路径，并保留已有导入项。macOS 示例：`file:///Users/your-name/path/cursor-trail.js`。
+   替换示例路径。macOS 示例：`file:///Users/your-name/path/cursor-trail.js`。
 
 4. 从命令面板运行 `Enable Custom CSS and JS`，然后重启 VS Code。
 
 加载器需要 VS Code 安装目录的写入权限；Windows 可能需要管理员权限。
-更新脚本、配置或 VS Code 后，运行 `Reload Custom CSS and JS` 并重启。
 
-在 Windows 上验证下载文件时，将以下输出与校验和文件对比：
+将下载文件的 SHA-256 与 `SHA256SUMS.txt` 对比：
 
 ```powershell
 Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
@@ -44,10 +41,9 @@ Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
 
 ## 配置
 
-动画跟随实际渲染的光标样式与颜色，包括 Vim 模式变化。
 支持样式：`line`、`line-thin`、`block`、`block-outline`、`underline`、`underline-thin`。
 
-修改 [cursor-trail.js](./cursor-trail.js) 中的 `CONFIG` 可调整下列常用选项，之后按上述步骤重新加载：
+修改 [cursor-trail.js](./cursor-trail.js) 中的 `CONFIG` 后重新加载脚本。常用选项：
 
 | 选项 | 默认值 | 说明 |
 | --- | ---: | --- |
@@ -65,58 +61,34 @@ Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
 | `zIndex` | `100` | 覆盖层堆叠层级 |
 | `fallbackColor` | `#ca9ee6` | 备用光标颜色 |
 
-弹簧时长为基础参数，并非固定动画时长。
-空闲时停止绘制，默认每 100 毫秒扫描一次；窗口隐藏时两者均暂停。
+弹簧时长为基础参数，并非固定动画时长。空闲时停止绘制，默认每 100 毫秒扫描一次；
+窗口隐藏时两者均暂停，默认在失焦时同样暂停。
 
-## 兼容性
+## 使用
 
-| 环境 | 状态 |
-| --- | --- |
-| Windows 11、macOS 上的 VS Code 桌面版 | 已完成人工验证 |
-| Linux、VS Code Insiders、VSCodium | 尚未验证 |
-| VS Code 网页版 | 不支持 |
-
-依赖非官方工作台注入，可能触发安装完整性警告。
-VS Code 更新后可能需要重新注入或适配。不为普通 HTML 输入框和密码框提供动画。
-
-## 隐私
-
-仅读取光标几何、样式及界面活动状态。不读取输入文字、Cookie 或剪贴板，
-不联网、不持久化存储、不执行系统命令。错误提示不含原始异常详情。
-私密问题报告见 [SECURITY.md](./SECURITY.md)。
-
-## 故障排查
-
-- **没有动画：**检查本地 URI、加载器启用状态、窗口焦点及减少动态效果设置。
-- **异常或更新后停止：**重新加载脚本并重启 VS Code。
-- **拖尾覆盖菜单：**调低 `CONFIG.zIndex`。
-
-**卸载：**移除 `vscode_custom_css.imports` 中的脚本 URI，重新加载并重启 VS Code。
+- **更新：**脚本、配置或 VS Code 变更后，运行 `Reload Custom CSS and JS` 并重启。
+- **卸载：**移除 `vscode_custom_css.imports` 中的脚本 URI，重新加载并重启。
 
 <details>
-<summary>临时开关</summary>
+<summary>开关与诊断</summary>
 
-在开发者工具 Console 中关闭动画：
+打开 `Developer: Toggle Developer Tools` → **Console**。
+
+关闭：
 
 ```javascript
 window.__vscodeNeovideCursorLite.setEnabled(false)
 ```
 
-重新开启：
+开启：
 
 ```javascript
 window.__vscodeNeovideCursorLite.setEnabled(true)
 ```
 
-仅对当前窗口生效，重新加载脚本后恢复默认开启。开启后仍遵循焦点、可见性和减少动态效果设置。
-故障实例需重新加载脚本。
+开关仅对当前窗口生效，重新加载脚本后恢复开启。开启后仍遵循已配置的暂停策略；故障实例需重新加载。
 
-</details>
-
-<details>
-<summary>只读诊断</summary>
-
-运行 `Developer: Toggle Developer Tools`，在 Console 中执行：
+查询状态：
 
 ```javascript
 window.__vscodeNeovideCursorLite?.getStatus?.() ?? { state: "diagnostics-unavailable" }
@@ -126,19 +98,41 @@ window.__vscodeNeovideCursorLite?.getStatus?.() ?? { state: "diagnostics-unavail
 | --- | --- |
 | `starting` | 等待页面就绪 |
 | `active` / `idle` | 渲染循环活跃／空闲 |
-| `disabled` | 手动关闭；`pauseReasons` 包含 `manual` |
-| `paused` | 原因见 `pauseReasons`：`hidden`（隐藏）、`blur`（失焦）、`reduced-motion`（减少动态效果） |
+| `disabled` | 手动关闭 |
+| `paused` | `pauseReasons`：`hidden`（隐藏）、`blur`（失焦）、`reduced-motion`（减少动态效果） |
 | `no-cursor` | 未跟踪到 Monaco 光标 |
 | `unavailable` | Canvas 不可用 |
-| `failed` | 分类见 `failure`：`initialization-error`（初始化）、`runtime-error`（运行）、`cleanup-error`（清理） |
-| `disposed` | 实例已移除，仅保留的旧引用可查询 |
-| `diagnostics-unavailable` | 脚本未加载、已移除，或旧版尚不支持诊断 |
+| `failed` | `failure`：`initialization-error`（初始化）、`runtime-error`（运行）、`cleanup-error`（清理） |
+| `disposed` | 实例已移除，仅保留的引用可查询 |
+| `diagnostics-unavailable` | 脚本未加载或不支持诊断 |
 
-`enabled` 表示临时开关状态，不代表动画正在运行。
-快照仅包含缓存状态、已跟踪光标数量和调度标志，不扫描、不唤醒渲染、不包含输入数据。
-`schemaVersion` 为诊断格式版本，并非软件版本。打开开发者工具可能改变窗口焦点，显示 `blur` 暂停原因。
+诊断仅返回缓存状态，不扫描、不唤醒渲染。`enabled` 为开关状态，`schemaVersion` 为诊断格式版本。
+开发者工具可能导致 `blur` 暂停。
 
 </details>
+
+## 兼容性
+
+| 环境 | 状态 |
+| --- | --- |
+| Windows 11、macOS 上的 VS Code 桌面版 | 已完成人工验证 |
+| Linux、VS Code Insiders、VSCodium | 尚未验证 |
+| VS Code 网页版 | 不支持 |
+
+依赖非官方工作台注入，可能触发完整性警告或在 VS Code 更新后失效。
+不为普通 HTML 输入框和密码框提供动画。
+
+## 隐私
+
+仅读取光标几何、样式及界面活动状态。不读取输入文字、Cookie 或剪贴板，
+不联网、不持久化存储、不执行系统命令。诊断不含输入数据或原始异常。
+私密报告：[SECURITY.md](./SECURITY.md)。
+
+## 故障排查
+
+- **没有动画：**检查脚本 URI、加载器及诊断状态。
+- **运行异常：**重新加载脚本并重启 VS Code。
+- **拖尾覆盖菜单：**调低 `CONFIG.zIndex`。
 
 ## 开发
 

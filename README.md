@@ -19,24 +19,21 @@ Neovide-style cursor animation for VS Code. One JavaScript file, no runtime depe
 
 1. Install [Custom CSS and JS Loader](https://marketplace.visualstudio.com/items?itemName=be5invis.vscode-custom-css).
 2. Download `cursor-trail.js` to a permanent local directory.
-3. Open `Preferences: Open User Settings (JSON)` and add its URI to `vscode_custom_css.imports`:
+3. Open `Preferences: Open User Settings (JSON)` and add the file URI, preserving existing imports:
 
    ```json
    {
-     "vscode_custom_css.imports": [
-       "file:///C:/path/to/cursor-trail.js"
-     ]
+     "vscode_custom_css.imports": ["file:///C:/path/to/cursor-trail.js"]
    }
    ```
 
-   Replace the example path; preserve existing imports. On macOS, use `file:///Users/your-name/path/cursor-trail.js`.
+   Replace the path. macOS example: `file:///Users/your-name/path/cursor-trail.js`.
 
 4. Run `Enable Custom CSS and JS` from the Command Palette, then restart VS Code.
 
-The loader needs write access to the VS Code installation; Windows may require administrator privileges.
-After script, configuration or VS Code updates, run `Reload Custom CSS and JS` and restart.
+The loader requires write access to the VS Code installation; Windows may require administrator privileges.
 
-To verify a download on Windows, compare its SHA-256 with the linked checksum file:
+Verify the download against `SHA256SUMS.txt`:
 
 ```powershell
 Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
@@ -44,10 +41,9 @@ Get-FileHash -Algorithm SHA256 "C:\path\to\cursor-trail.js"
 
 ## Configuration
 
-The animation follows the rendered cursor style and colour, including Vim mode changes.
 Supported styles: `line`, `line-thin`, `block`, `block-outline`, `underline`, `underline-thin`.
 
-Edit `CONFIG` in [cursor-trail.js](./cursor-trail.js) to adjust these common options, then reload as above:
+Edit `CONFIG` in [cursor-trail.js](./cursor-trail.js), then reload the script. Common options:
 
 | Option | Default | Description |
 | --- | ---: | --- |
@@ -65,58 +61,35 @@ Edit `CONFIG` in [cursor-trail.js](./cursor-trail.js) to adjust these common opt
 | `zIndex` | `100` | Overlay stacking level |
 | `fallbackColor` | `#ca9ee6` | Fallback cursor colour |
 
-Spring times are base parameters, not fixed animation durations.
-Idle rendering stops; scanning continues every 100 ms by default. Hidden windows suspend both.
+Spring times are base parameters, not fixed durations. Idle rendering stops; scanning defaults to
+100 ms intervals. Hidden windows suspend both; unfocused windows do so by default.
 
-## Compatibility
+## Usage
 
-| Environment | Status |
-| --- | --- |
-| VS Code desktop on Windows 11 and macOS | Manually verified |
-| Linux, VS Code Insiders, VSCodium | Not verified |
-| VS Code for the Web | Unsupported |
-
-Requires unofficial workbench injection, which may trigger an installation-integrity warning.
-VS Code updates can require reinjection or break compatibility. Ordinary HTML inputs and password fields are not animated.
-
-## Privacy
-
-Reads caret geometry, styles and interface activity only. No input-text, cookie or clipboard access,
-network requests, persistent storage or system commands. Error messages contain no exception details.
-See [SECURITY.md](./SECURITY.md) for private reporting.
-
-## Troubleshooting
-
-- **No animation:** check the local URI, loader activation, window focus and reduced-motion setting.
-- **Stopped after an error or update:** reload the script and restart VS Code.
-- **Trail above menus:** lower `CONFIG.zIndex`.
-
-**Uninstall:** remove the script URI from `vscode_custom_css.imports`, reload and restart VS Code.
+- **Update:** after script, configuration or VS Code changes, run `Reload Custom CSS and JS` and restart.
+- **Uninstall:** remove the script URI from `vscode_custom_css.imports`, then reload and restart.
 
 <details>
-<summary>Temporary controls</summary>
+<summary>Controls and diagnostics</summary>
 
-In the Developer Tools Console, disable the animation:
+Open `Developer: Toggle Developer Tools` → **Console**.
+
+Disable:
 
 ```javascript
 window.__vscodeNeovideCursorLite.setEnabled(false)
 ```
 
-Re-enable it:
+Enable:
 
 ```javascript
 window.__vscodeNeovideCursorLite.setEnabled(true)
 ```
 
-Changes apply to this window only and reset on script reload. Enabling still respects focus,
-visibility and reduced-motion settings. Failed instances require a script reload.
+The switch applies to this window and resets to enabled on script reload. Enabling preserves configured pause policies;
+failed instances require reloading.
 
-</details>
-
-<details>
-<summary>Read-only diagnostics</summary>
-
-Run `Developer: Toggle Developer Tools` and enter this in the Console:
+Read status:
 
 ```javascript
 window.__vscodeNeovideCursorLite?.getStatus?.() ?? { state: "diagnostics-unavailable" }
@@ -126,24 +99,45 @@ window.__vscodeNeovideCursorLite?.getStatus?.() ?? { state: "diagnostics-unavail
 | --- | --- |
 | `starting` | Waiting for the document |
 | `active` / `idle` | Render loop active / suspended |
-| `disabled` | Manually disabled; `pauseReasons` includes `manual` |
-| `paused` | See `pauseReasons`: `hidden`, `blur`, `reduced-motion` |
+| `disabled` | Manually disabled |
+| `paused` | `pauseReasons`: `hidden`, `blur`, `reduced-motion` |
 | `no-cursor` | No tracked Monaco carets |
 | `unavailable` | Canvas unavailable |
-| `failed` | See `failure`: `initialization-error`, `runtime-error`, `cleanup-error` |
-| `disposed` | Instance removed; only observable through a retained reference |
-| `diagnostics-unavailable` | Script not loaded, removed, or too old to provide diagnostics |
+| `failed` | `failure`: `initialization-error`, `runtime-error`, `cleanup-error` |
+| `disposed` | Removed instance; retained references only |
+| `diagnostics-unavailable` | Script absent or diagnostics unsupported |
 
-`enabled` records the temporary switch, not whether animation is currently running.
-The snapshot contains cached state, tracked caret count and scheduling flags only. It does not scan,
-wake rendering or include input data. `schemaVersion` identifies the diagnostic format, not the release.
-Opening Developer Tools may change window focus and produce a `blur` pause reason.
+Diagnostics return cached state only, without scanning or waking rendering. `enabled` is the switch state;
+`schemaVersion` is the diagnostic format version. Developer Tools may cause a `blur` pause.
 
 </details>
 
+## Compatibility
+
+| Environment | Status |
+| --- | --- |
+| VS Code desktop on Windows 11 and macOS | Manually verified |
+| Linux, VS Code Insiders, VSCodium | Not verified |
+| VS Code for the Web | Unsupported |
+
+Uses unofficial workbench injection, which may trigger integrity warnings or break after VS Code updates.
+Ordinary HTML inputs and password fields are not animated.
+
+## Privacy
+
+Reads only caret geometry, styles and interface activity. No input-text, cookie or clipboard access,
+network requests, persistent storage or system commands. Diagnostics exclude input data and raw exceptions.
+Private reporting: [SECURITY.md](./SECURITY.md).
+
+## Troubleshooting
+
+- **No animation:** check the script URI, loader and diagnostic status.
+- **Failed:** reload the script and restart VS Code.
+- **Trail above menus:** lower `CONFIG.zIndex`.
+
 ## Development
 
-Node.js is needed only for testing and release packaging.
+Requires Node.js for tests and packaging only.
 
 ```powershell
 node --check cursor-trail.js
