@@ -306,6 +306,7 @@
         let color = CONFIG.fallbackColor;
         let initialized = false;
         let jumped = false;
+        let animating = false;
         let outline = false;
         let transfer = null;
         let lastTime = performance.now();
@@ -411,8 +412,8 @@
                 return Boolean(transfer);
             },
 
-            getTransferVisual() {
-                if (!transfer) return null;
+            getMotionVisual() {
+                if (!transfer && !animating) return null;
                 return {
                     center: {
                         x: corners.reduce((sum, corner) => sum + corner.current.x, 0) / corners.length,
@@ -453,7 +454,7 @@
                     jumped = false;
                 }
 
-                let animating = false;
+                animating = false;
                 if (waiting || (transfer && dt === 0 && !immediate)) {
                     // 时间未推进时保留交接帧，避免浮点偏移。
                     animating = true;
@@ -913,6 +914,8 @@
 
                 if (!visible) {
                     data.active = false;
+                    // 同步不可见几何，避免后续扫描因旧坐标反复唤醒渲染。
+                    data.lastRect = rect;
                     cursor.classList.remove(HIDDEN_CLASS);
                     return;
                 }
@@ -936,8 +939,9 @@
                     this.pointerFocus = null;
                     data.active = true;
                     focusTransferUsed = true;
-                } else if (!editorFocused && data.instance.isTransferring()) {
-                    // 取消失焦编辑器的过渡，避免残留拖尾。
+                } else if (!editorFocused &&
+                    (data.instance.isTransferring() || editor === this.focusedEditor)) {
+                    // 交接时一并停止源编辑器的页内动画，避免两段拖尾并存。
                     data.instance.move(rect, data.color, true);
                     data.active = true;
                 } else if (reset && !data.instance.isTransferring()) {
@@ -952,7 +956,8 @@
                 data.editorFocused = editorFocused;
                 data.styleDirty = false;
 
-                if (editorFocused && !nextFocusedEditor) {
+                const recordFocusedVisual = editorFocused && !nextFocusedEditor;
+                if (recordFocusedVisual) {
                     const width = rect.shape === "line"
                         ? clamp(rect.width, CONFIG.minWidth, CONFIG.maxDrawWidth)
                         : rect.width;
@@ -970,9 +975,9 @@
                 if (data.instance.draw(this.context, this.isScrolling)) {
                     anyAnimating = true;
                 }
-                if (editorFocused && nextFocusedEditor === editor) {
-                    // 记录本帧过渡位置，供连续切换接续。
-                    nextFocusedVisual = data.instance.getTransferVisual() || nextFocusedVisual;
+                if (recordFocusedVisual) {
+                    // 记录主光标的页内或跨编辑器动画，供下一次切换接续。
+                    nextFocusedVisual = data.instance.getMotionVisual() || nextFocusedVisual;
                 }
             });
 

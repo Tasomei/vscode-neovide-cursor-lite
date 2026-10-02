@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep unchanged hidden and offscreen carets from repeatedly waking the render loop.
+- Preserve visible corners when switching editors during a same-editor animation and stop the previous editor's trail.
+
 ## [0.5.0] - 2026-09-23
 
 ### Added

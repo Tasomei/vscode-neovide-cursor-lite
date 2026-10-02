@@ -1086,6 +1086,47 @@ test("resynchronizes a hidden or reparented editor caret without a cross-editor 
     harness.window[GLOBAL_KEY].dispose();
 });
 
+for (const mode of ["zero-size", "offscreen", "hidden-style"]) {
+    test(`keeps an unchanged ${mode} caret idle across scan ticks and resumes when visible`, (context) => {
+        const h = createHarness();
+        context.after(() => h.window[GLOBAL_KEY]?.dispose());
+        h.inject();
+        h.drainFrames();
+        if (mode === "zero-size") Object.assign(h.cursor.rect, { width: 0, height: 0 });
+        if (mode === "offscreen") h.cursor.rect.top = -10000;
+        if (mode === "hidden-style") {
+            h.cursor.computedStyle.visibility = "hidden";
+            h.cursor.rect.left = 400;
+        }
+        h.tickIntervals();
+        h.drainFrames();
+        let clears = 0;
+        const clearRect = h.context2d.clearRect;
+        h.context2d.clearRect = () => { clears += 1; clearRect(); };
+        // 同时推进扫描与渲染，覆盖周期扫描反复唤醒的场景。
+        for (let tick = 0; tick < 10; tick++) {
+            h.tickIntervals();
+            for (let frame = 0; frame < 6; frame++) h.runFrame(100 / 6);
+        }
+        assert.equal(clears, 0, "unchanged invisible geometry must not wake drawing");
+        assert.equal(h.pendingAnimationFrames, 0);
+        assert.equal(h.intervalCount, 1);
+        assert.equal(h.cursor.classList.contains(HIDDEN_CLASS), false);
+
+        Object.assign(h.cursor.rect, { left: 450, top: 90, width: 6, height: 18 });
+        h.cursor.computedStyle.visibility = "visible";
+        h.tickIntervals();
+        h.runFrame();
+        assert.deepEqual(bounds(h.drawings[0]), { left: 450, top: 90, width: 4, height: 18 });
+        h.drainFrames();
+        h.cursor.rect.left += 60;
+        h.emitDocument("keydown");
+        h.runFrame();
+        assert.equal(h.cursor.classList.contains(HIDDEN_CLASS), true);
+        assert.equal(h.warnings.length, 0);
+    });
+}
+
 test("updates a stationary caret colour on the next style scan", () => {
     const harness = createHarness();
     harness.inject();
@@ -1170,6 +1211,91 @@ function createSplitHarness(context) {
             harness.emitDocument("mousedown");
         }
     };
+}
+
+for (const hz of [60, 120, 144]) {
+    for (const shape of ["line", "block", "block-outline"]) {
+        for (const destination of [0, 2]) {
+            test(`hands off an in-flight same-editor ${shape} jump to editor ${destination} at ${hz} Hz`, (context) => {
+                const { harness: h, carets, focus } = createSplitHarness(context);
+                for (const caret of carets) {
+                    h.setShape(shape, caret);
+                    caret.rect.width = 12;
+                }
+                focus(1);
+                h.drainFrames();
+                Object.assign(carets[1].rect, { left: 300, top: 160 });
+                h.emitDocument("keydown");
+                for (let frame = 0; frame < 3; frame++) h.runFrame(1000 / hz);
+                const before = h.drawings[1].points.map(point => ({ ...point }));
+                assert.ok(bounds(h.drawings[1]).width > 12, "the source must still be deforming");
+                focus(destination);
+                h.runFrame(0);
+                assert.deepEqual(h.drawings[destination].points, before,
+                    "handoff must preserve the visible corners rather than the old target position");
+                const inset = shape === "block-outline" ? 0.5 : 0;
+                const width = shape === "line" ? 4 : 12 - inset * 2;
+                assert.deepEqual(bounds(h.drawings[1]), {
+                    left: 300 + inset, top: 160 + inset, width, height: 18 - inset * 2
+                }, "the previous editor must stop its same-editor trail");
+                h.drainFrames();
+                assert.deepEqual(bounds(h.drawings[destination]), {
+                    left: carets[destination].rect.left + inset, top: 30 + inset,
+                    width, height: 18 - inset * 2
+                });
+                assert.equal(h.pendingAnimationFrames, 0);
+                carets.forEach(caret => assert.equal(caret.classList.contains(HIDDEN_CLASS), false));
+            });
+        }
+    }
+}
+
+test("hands off the primary visible caret without retaining secondary trails", (context) => {
+    const h = createHarness();
+    context.after(() => h.window[GLOBAL_KEY]?.dispose());
+    const secondary = h.addCursor({ left: 20, top: 80, width: 6, height: 18 });
+    const target = h.addCursor({ left: 600, top: 250, width: 6, height: 18 }, h.document.createElement("div"));
+    h.inject();
+    h.drainFrames();
+    h.cursor.rect.left = 300;
+    secondary.rect.left = 200;
+    h.emitDocument("keydown");
+    h.runFrame();
+    const before = h.drawings[0].points.map(point => ({ ...point }));
+    assert.notDeepEqual(h.drawings[1].points, before);
+    h.cursor.editor.classList.remove("focused");
+    target.editor.classList.add("focused");
+    h.emitDocument("focusin");
+    h.runFrame(0);
+    assert.deepEqual(h.drawings[2].points, before);
+    assert.deepEqual(bounds(h.drawings[0]), { left: 300, top: 30, width: 4, height: 18 });
+    assert.deepEqual(bounds(h.drawings[1]), { left: 200, top: 80, width: 4, height: 18 });
+    h.drainFrames();
+    assert.equal(h.pendingAnimationFrames, 0);
+});
+
+for (const hz of [60, 120, 144]) {
+    test(`preserves an in-flight source while a mouse destination row is stale at ${hz} Hz`, (context) => {
+        const { harness: h, carets } = createSplitHarness(context);
+        Object.assign(carets[0].rect, { left: 300, top: 160 });
+        h.emitDocument("keydown");
+        for (let frame = 0; frame < 3; frame++) h.runFrame(1000 / hz);
+        const before = h.drawings[0].points.map(point => ({ ...point }));
+        h.emitDocument("mousedown", { target: carets[1], button: 0 });
+        carets[0].editor.classList.remove("focused");
+        carets[1].editor.classList.add("focused");
+        h.emitDocument("focusin");
+        h.runFrame(1000 / hz);
+        assert.deepEqual(h.drawings[1].points, before);
+        assert.deepEqual(bounds(h.drawings[0]), { left: 300, top: 160, width: 4, height: 18 });
+        carets[1].rect.top = 300;
+        h.runFrame(0);
+        assert.deepEqual(h.drawings[1].points, before,
+            "the updated row must not replace the preserved source corners");
+        h.drainFrames();
+        assert.deepEqual(bounds(h.drawings[1]), { left: 500, top: 300, width: 4, height: 18 });
+        assert.equal(h.pendingAnimationFrames, 0);
+    });
 }
 
 for (const hz of [60, 120, 144]) {
