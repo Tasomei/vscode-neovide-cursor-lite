@@ -2,7 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [0.5.2] - 2026-11-15
+
+### Changed
+
+- Streamline both READMEs, record everyday-use verification on Debian 13 and add a Linux installation path example.
+- Mark v0.5.2 as the final release. The animation script is identical to v0.5.1.
 
 ## [0.5.1] - 2026-10-02
 
@@ -129,7 +134,7 @@ The runtime animation and its default feel are unchanged in this release.
 - Automatic cleanup when the script is injected again.
 - Single-file distribution with no build step or runtime dependency.
 
-[Unreleased]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.5.1...HEAD
+[0.5.2]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.3.0...v0.4.0
