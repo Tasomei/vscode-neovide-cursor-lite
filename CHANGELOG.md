@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.0] - 2026-11-20
+
+### Changed
+
+- Publish `v1.0.0` as the planned final release. The animation script is feature-complete and may not receive further updates.
+- Simplify the compatibility section in both READMEs to clearly state supported and unsupported environments.
+
 ## [0.5.2] - 2026-11-15
 
 ### Changed
@@ -134,12 +141,4 @@ The runtime animation and its default feel are unchanged in this release.
 - Automatic cleanup when the script is injected again.
 - Single-file distribution with no build step or runtime dependency.
 
-[0.5.2]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.5.1...v0.5.2
-[0.5.1]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.5.0...v0.5.1
-[0.5.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.2...v0.2.0
-[0.1.2]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/Tasomei/vscode-neovide-cursor-lite/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/tag/v0.1.0
+[1.0.0]: https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/tag/v1.0.0

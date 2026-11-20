@@ -2,7 +2,7 @@
 
 English · [简体中文](./README.zh-CN.md)
 
-Neovide-style cursor animation for VS Code. A single JavaScript file with no runtime dependencies. **v0.5.2 is the final release.**
+Neovide-style cursor animation for VS Code. A single JavaScript file with no runtime dependencies. **v1.0.0 is the planned final release.**
 
 [Download](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/latest/download/cursor-trail.js) · [SHA-256](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/latest/download/SHA256SUMS.txt) · [Changelog](./CHANGELOG.md)
 
@@ -36,13 +36,9 @@ The loader needs write access to the VS Code installation. Workbench injection m
 
 ## Compatibility and privacy
 
-| Environment | Status |
-| --- | --- |
-| VS Code desktop on Windows 11 and macOS | Manually verified |
-| VS Code desktop on Debian 13 | Verified in everyday use |
-| Other Linux distributions, VS Code Insiders and VSCodium | Unverified |
-| VS Code for the Web | Unsupported |
+- **Supported:** VS Code desktop on Windows, macOS, and Linux.
+- **Unsupported:** VS Code for the Web, and ordinary HTML inputs or password fields.
 
-The script reads caret geometry, styles and interface activity. It has no telemetry or network requests and does not read typed text, cookies or the clipboard. Ordinary HTML inputs and password fields are outside the animation scope.
+The script reads caret geometry, styles, and interface activity. It has no telemetry or network requests and does not read typed text, cookies, or the clipboard.
 
 [MIT license](./LICENSE) · [Credits](./NOTICE.md) · [Security](./SECURITY.md) · [Development](./CONTRIBUTING.md)

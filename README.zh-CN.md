@@ -2,7 +2,7 @@
 
 [English](./README.md) · 简体中文
 
-为 VS Code 提供 Neovide 风格的光标动画。单个 JavaScript 文件，无运行时依赖。**v0.5.2 是最终版。**
+为 VS Code 提供 Neovide 风格的光标动画。单个 JavaScript 文件，无运行时依赖。**v1.0.0 是计划中的最终版本。**
 
 [下载脚本](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/latest/download/cursor-trail.js) · [SHA-256](https://github.com/Tasomei/vscode-neovide-cursor-lite/releases/latest/download/SHA256SUMS.txt) · [更新日志](./CHANGELOG.md)
 
@@ -36,13 +36,9 @@
 
 ## 兼容性与隐私
 
-| 环境 | 状态 |
-| --- | --- |
-| Windows 11、macOS 上的 VS Code 桌面版 | 已人工验证 |
-| Debian 13 上的 VS Code 桌面版 | 已在日常使用中验证 |
-| 其他 Linux 发行版、VS Code Insiders 和 VSCodium | 尚未验证 |
-| VS Code 网页版 | 不支持 |
+- **支持：** Windows、macOS 和 Linux 上的 VS Code 桌面版。
+- **不支持：** VS Code 网页版，以及普通 HTML 输入框和密码框。
 
-脚本仅读取光标几何、样式和界面活动，无遥测或网络请求，不读取输入文字、Cookie 或剪贴板。普通 HTML 输入框和密码框不显示动画。
+脚本仅读取光标几何、样式和界面活动，无遥测或网络请求，不读取输入文字、Cookie 或剪贴板。
 
 [MIT 许可证](./LICENSE) · [致谢](./NOTICE.md) · [安全](./SECURITY.md) · [开发](./CONTRIBUTING.md)
